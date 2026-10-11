@@ -1,0 +1,72 @@
+name: build-static-cli
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Primary: 2 musl-static binaries. Each runs on both musl and
+          # glibc hosts (kernel-only dep), so these 2 cover all 4 combos.
+          # `platform` = upstream docker image; `asset` = PLAN release name.
+          - platform: linux-musl-x64
+            asset: linux-x64
+            runner: ubuntu-24.04
+          - platform: linux-musl-arm64
+            asset: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream (no fork, archive at pin)
+        run: |
+          source ./versions.camera.properties
+          curl -sL --retry 3 "https://github.com/$UPSTREAM_REPO/archive/refs/tags/$UPSTREAM_TAG.tar.gz" \
+            -o /tmp/upstream.tar.gz
+          mkdir -p /tmp/upstream && tar xzC /tmp/upstream --strip-components=1 -f /tmp/upstream.tar.gz
+          cp /tmp/upstream/build.sh ./build.sh
+          rm -rf ./build ./platforms
+          cp -r /tmp/upstream/build ./build
+          cp -r /tmp/upstream/platforms ./platforms
+          cp /tmp/upstream/versions.properties ./versions.properties
+          ls build platforms
+
+      - name: Build upstream image (unmodified)
+        run: docker build --pull -t vips-dev-${{ matrix.platform }} platforms/${{ matrix.platform }}
+
+      - name: Upstream deps + camera static extras (same container lifetime)
+        run: |
+          docker run --rm -v "$PWD:/packaging" vips-dev-${{ matrix.platform }} \
+            sh -c "/packaging/build-deps-only.sh && /packaging/build-camera-extras.sh"
+          mv ./vips-cli-${{ matrix.platform }}-static.tar.gz ./vips-cli-${{ matrix.asset }}-static.tar.gz
+          ls -lh ./*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vips-cli-${{ matrix.asset }}-static
+          path: vips-cli-${{ matrix.asset }}-static.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body: |
+            `vips-cli-linux-x64-static` + `vips-cli-linux-arm64-static`
+            (musl-static, runs on musl and glibc≥2.28).

@@ -1,0 +1,11 @@
+# Upstream overlay (fetched at pin in CI, never vendored)
+build/
+platforms/
+build.sh
+versions.properties
+check-latest-versions.sh
+# Build artifacts
+*.tar.gz
+/target/
+/deps/
+__pycache__/
