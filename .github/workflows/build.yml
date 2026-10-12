@@ -41,6 +41,7 @@ jobs:
           path: vips-cli-${{ matrix.asset }}-static.tar.gz
 
   release:
+    # Tags are named v{upstream}-{build}, e.g. v8.18.5-1 (see README).
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build]
     runs-on: ubuntu-24.04
@@ -51,9 +52,13 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: svenstaro/upload-release-action@v2
         with:
-          files: dist/*
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/*
+          file_glob: true
+          tag: ${{ github.ref }}
+          overwrite: true
           body: |
             `vips-cli-linux-x64-static` + `vips-cli-linux-arm64-static`
             (musl-static, runs on musl and glibc≥2.28).

@@ -14,6 +14,12 @@ hosts. No system imaging libs required.
 (CI renames these to `vips-cli-linux-{x64,arm64}-static`.) Both encode **and**
 decode AVIF (aom) + HEIC (x265/libde265) — upstream builds are AV1-only.
 
+## Releases
+
+Tags are named `v{upstream}-{build}`, e.g. `v8.18.5-1`: the upstream libvips
+version plus our build number. Bump the trailing number for rebuilds (script
+or pin changes); change the upstream part when rebasing `UPSTREAM_TAG`.
+
 ## Layout (own files; upstream never forked)
 
 | File | Purpose |
