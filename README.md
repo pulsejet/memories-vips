@@ -1,57 +1,60 @@
 # vips-static — portable static-contained libvips C++ CLI
 
-Implements `PLAN.md`: ship `libvips` + C++ preview CLI as **2 fully-static
-musl binaries** (`linux-x64`, `linux-arm64`) that run on both `glibc≥2.28`
-and `musl≥1.2.5` hosts. No system imaging libs required.
+Ship `libvips` + camera preview CLI as **2 fully-static musl binaries**
+(`linux-x64`, `linux-arm64`) that run on both `glibc≥2.28` and `musl≥1.2.5`
+hosts. No system imaging libs required. Implements `PLAN.md`.
 
-## Layout (own files only, upstream never forked)
+## Status (verified 2026-10-11)
+
+| Asset | Arch | Tarball | Binary | Static | AV1 | HEVC |
+|---|---|---|---|---|---|---|
+| `vips-cli-linux-x64-static` | x86_64 | 16M | 44M unstripped | `NEEDED=0` | ✓ | ✓ |
+| `vips-cli-linux-musl-arm64-static` | aarch64 | 14M | 32M stripped | `NEEDED=0` | ✓ | ✓ |
+
+(CI renames these to `vips-cli-linux-{x64,arm64}-static`.) Both encode **and**
+decode AVIF (aom) + HEIC (x265/libde265) — upstream builds are AV1-only.
+
+## Layout (own files; upstream never forked)
 
 | File | Purpose |
 |---|---|
-| `versions.camera.properties` | Pins for delta deps + `UPSTREAM_TAG` |
+| `versions.camera.properties` | Pins for delta deps + `UPSTREAM_TAG` + heif codec toggles |
+| `fetch-upstream.sh` | Overlay upstream `build.sh`/`build`/`platforms` at pin (CI + local) |
 | `build-deps-only.sh` | Upstream `posix.sh` minus Cleanup tail (copy, unmodified) |
-| `build-camera-extras.sh` | Delta static deps + `libheif`/`libvips` static rebuild + `-static` CLI link |
+| `build-camera-extras.sh` | Delta static deps + `libheif`/`libvips` rebuild + `-static` CLI link |
 | `src/preview.cc` | `info \| thumbnail \| convert` CLI (`vips_thumbnail`, shrink-on-load) |
 | `.github/workflows/build.yml` | 2-job matrix (musl x64/arm64), `v*` tag → release |
 
-Upstream (`kleisauke/libvips-packaging` `build.sh`, `build/`, `platforms/`,
-`versions.properties`) is fetched as a **tarball at pin** in CI, never vendored.
+`build-deps-only.sh` stops before upstream's
+`rm -rf $TARGET/lib/{pkgconfig,cmake,...}` so `.pc` + CMake metadata survive
+for the static rebuilds. Upstream files are only ever read.
 
-## Local build (matches CI)
+## Build
 
 ```bash
-source versions.camera.properties
-curl -sL "https://github.com/$UPSTREAM_REPO/archive/refs/tags/$UPSTREAM_TAG.tar.gz" -o /tmp/up.tar.gz
-mkdir -p /tmp/up && tar xzC /tmp/up --strip-components=1 -f /tmp/up.tar.gz
-cp /tmp/up/build.sh . && rm -rf build platforms && cp -r /tmp/up/build . && cp -r /tmp/up/platforms . && cp /tmp/up/versions.properties .
+./fetch-upstream.sh
 docker build --pull -t vips-dev-linux-musl-x64 platforms/linux-musl-x64
 docker run --rm -v "$PWD:/packaging" vips-dev-linux-musl-x64 \
   sh -c "/packaging/build-deps-only.sh && /packaging/build-camera-extras.sh"
 ```
 
-`build-deps-only.sh` runs upstream `posix.sh` without its final
-`rm -rf $TARGET/lib/{pkgconfig,cmake,...}` cleanup, so `.pc` + CMake
-metadata survive for the static rebuilds.
+ARM64: same with `linux-musl-arm64` (native runner, or `--platform linux/arm64` under QEMU — works, ~3h).
 
-Primary artifact: `vips-cli-{linux-x64,linux-arm64}-static.tar.gz`
-(built by the `linux-musl-*` images; musl-static runs on glibc too).
-glibc `linux-{x64,arm64}` image builds are dropped — they only produced
-fallback shared tarballs, which we don't ship unless static hits a data-file issue.
-
-## Deltas vs upstream
+## Deltas vs upstream (`kleisauke/libvips-packaging@v8.18.5`)
 
 - New static deps: `brotli 1.2.0`, `dav1d 1.5.4`, `libde265 1.0.16`,
   `x265 4.1`, `openjpeg 2.5.4`, `Imath 3.1.12`, `OpenEXR 3.2.4`,
   `libraw 0.22.2`, `libjxl 0.12.0`.
-- `libheif`: `-DWITH_X265=1 -DWITH_LIBDE265=1 -DWITH_AOM=1 -DWITH_DAV1D=1 -DENABLE_PLUGIN_LOADING=0`.
-- `libvips`: `--default-library=static -Dmodules=disabled`
-  `-Draw=enabled -Dheif=enabled -Djpeg-xl=enabled -Dopenjpeg=enabled -Dspng=enabled -Dopenexr=enabled -Dcgif=enabled`,
-  plus `-Dppm=true -Dradiance=true` (built-in, no deps; upstream leaves them off).
-- `svt-av1`/`rav1e` deliberately OFF (`aom` already covers AV1 encode).
-- CLI link: `c++ preview.cc $(pkg-config --libs --static vips-cpp) -static -static-libstdc++ -static-libgcc`; build gates on `readelf -d` showing no `NEEDED`.
+- `libheif`: `WITH_X265/LIBDE265/AOM/DAV1D=1`, `ENABLE_PLUGIN_LOADING=0`.
+- `libvips`: `--default-library=static -Dmodules=disabled`,
+  `raw/heif/jpeg-xl/openjpeg/spng/openexr/cgif` enabled,
+  plus built-in `ppm/radiance` (upstream leaves them off).
+- CLI: `c++ preview.cc $(pkg-config --libs --static vips-cpp)` closed in
+  `--start-group/--end-group -lz`, linked `-static`; build gates on
+  `readelf -d` showing no `NEEDED`.
 
 ## License note
 
-Per PLAN: ignored — consumers are AGPL3. Static archive pulls in
-GPL (`x265`), LGPL, BSD, MIT, Apache-2.0 code. `versions.json` in each
+Per PLAN: ignored — consumers are AGPL3. The static binary bundles
+GPL (`x265`), LGPL, BSD, MIT and Apache-2.0 code. `versions.json` in each
 tarball records exact versions.
