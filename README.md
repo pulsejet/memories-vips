@@ -2,7 +2,7 @@
 
 Ship `libvips` + camera preview CLI as **2 fully-static musl binaries**
 (`linux-x64`, `linux-arm64`) that run on both `glibc≥2.28` and `musl≥1.2.5`
-hosts. No system imaging libs required. Implements `PLAN.md`.
+hosts. No system imaging libs required.
 
 ## Status (verified 2026-10-11)
 

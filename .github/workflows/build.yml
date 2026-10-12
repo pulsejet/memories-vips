@@ -12,9 +12,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Primary: 2 musl-static binaries. Each runs on both musl and
-          # glibc hosts (kernel-only dep), so these 2 cover all 4 combos.
-          # `platform` = upstream docker image; `asset` = PLAN release name.
           - platform: linux-musl-x64
             asset: linux-x64
             runner: ubuntu-24.04
