@@ -5,7 +5,8 @@
 // the file — or to /dev/stdout when the request sets stdout, so piped
 // output needs no more memory than file output.
 //
-// Uses vips_thumbnail() so shrink-on-load + embedded heif thumbnails apply.
+// Uses VImage::thumbnail() (the vips thumbnail op) so shrink-on-load +
+// embedded heif thumbnails apply.
 #pragma once
 
 #include <vips/vips8>
