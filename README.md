@@ -28,7 +28,7 @@ or pin changes); change the upstream part when rebasing `UPSTREAM_TAG`.
 | `fetch-upstream.sh` | Overlay upstream `build.sh`/`build`/`platforms` at pin (CI + local) |
 | `build-deps-only.sh` | Upstream `posix.sh` minus Cleanup tail (copy, unmodified) |
 | `build-camera-extras.sh` | Delta static deps + `libheif`/`libvips` rebuild + `-static` CLI link |
-| `src/preview.cc` | `info \| thumbnail \| convert` CLI (`vips_thumbnail`, shrink-on-load) |
+| `src/preview.cc` + `src/{protocol,image,usage,util}.h` + `src/json.hpp` | JSON-stdin CLI (`info \| thumbnail \| convert` via `{"cmd":...}` on stdin; saver from output ext, `"stdout":true` streams) + vendored nlohmann/json 3.11.3 |
 | `.github/workflows/build.yml` | 2-job matrix (musl x64/arm64), `v*` tag → release |
 
 `build-deps-only.sh` stops before upstream's

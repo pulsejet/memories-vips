@@ -60,10 +60,16 @@ the main OOM risk. Everything else stays at `-j$(nproc)`.
 ```bash
 mkdir -p /tmp/cli && tar xzC /tmp/cli -f vips-cli-linux-musl-x64-static.tar.gz
 readelf -d /tmp/cli/vips-preview | grep -c NEEDED   # must print 0 (fully static)
-/tmp/cli/vips-preview info <any-image>
 python3 -c "open('/tmp/in.ppm','wb').write(b'P6\n64 64\n255\n'+bytes([200,30,30])*64*64)"
-/tmp/cli/vips-preview convert /tmp/in.ppm /tmp/a.avif  # AV1 encode (aom)
-/tmp/cli/vips-preview convert /tmp/in.ppm /tmp/a.heic  # HEVC encode (x265)
+echo '{"cmd":"info","input":"/tmp/in.ppm"}' | /tmp/cli/vips-preview
+# {"bands":3,"filename":"/tmp/in.ppm","format":...,"height":64,"interpretation":...,"width":64}
+echo '{"cmd":"convert","input":"/tmp/in.ppm","output":"/tmp/a.avif"}' \
+  | /tmp/cli/vips-preview                             # AV1 encode (aom)
+echo '{"cmd":"convert","input":"/tmp/in.ppm","output":"/tmp/a.heic"}' \
+  | /tmp/cli/vips-preview                             # HEVC encode (x265)
+echo '{"cmd":"thumbnail","input":"/tmp/in.ppm","output":"t.jpg","stdout":true}' \
+  | /tmp/cli/vips-preview > /tmp/t.jpg                # saver from OUTPUT ext,
+                                                      # bytes streamed on stdout
 ```
 
 Both encodes must succeed — upstream binaries only manage AV1. The aarch64
