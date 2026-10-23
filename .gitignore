@@ -1,5 +1,5 @@
 # Upstream overlay (fetched at pin in CI, never vendored)
-build/
+/build/
 platforms/
 build.sh
 versions.properties

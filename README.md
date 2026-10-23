@@ -46,10 +46,10 @@ docker run --rm -v "$PWD:/packaging" vips-dev-linux-musl-x64 \
 
 ARM64: same with `linux-musl-arm64` (native runner, or `--platform linux/arm64` under QEMU — works, ~3h).
 
-## Deltas vs upstream (`kleisauke/libvips-packaging@v8.18.5`)
+## Deltas vs upstream (`kleisauke/libvips-packaging@v8.18.7`)
 
-- New static deps: `brotli 1.2.0`, `dav1d 1.5.4`, `libde265 1.0.16`,
-  `x265 4.1`, `openjpeg 2.5.4`, `Imath 3.1.12`, `OpenEXR 3.2.4`,
+- New static deps: `brotli 1.2.1`, `dav1d 1.5.4`, `libde265 1.0.19`,
+  `x265 4.1`, `openjpeg 2.5.4`, `Imath 3.1.12`, `OpenEXR 3.2.12`,
   `libraw 0.22.2`, `libjxl 0.12.0`.
 - `libheif`: `WITH_X265/LIBDE265/AOM/DAV1D=1`, `ENABLE_PLUGIN_LOADING=0`.
 - `libvips`: `--default-library=static -Dmodules=disabled`,
