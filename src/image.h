@@ -26,6 +26,9 @@ using namespace vips;
 /// saver options (Q/compression) where the saver supports them. Metadata
 /// policy: @p strip removes EXIF etc. — true for thumbnails (smaller
 /// payloads, no location leaks), false for convert (preserve metadata).
+/// Thumbnails still keep the gainmap (`keep=gainmap`): UltraHDR JPEGs are
+/// SDR base + gainmap metadata and jpegsave auto-forwards to uhdrsave only
+/// when the gainmap is present — `strip` would drop it and force SDR.
 /// When @p to_stdout, the same saver streams to /dev/stdout and no file is
 /// written (`output` still selects the format).
 inline void save_image(VImage im, const std::string &output, int quality,
@@ -38,29 +41,48 @@ inline void save_image(VImage im, const std::string &output, int quality,
 
   if (ends_with(o, ".jpg") || ends_with(o, ".jpeg")) {
     // MozJPEG path; strip only for thumbnails, never for convert.
+    // keep=gainmap (not strip) so UHDR thumbnails stay UHDR: jpegsave
+    // forwards to uhdrsave when gainmap-data is present.
     VOption *opts = VImage::option()->set("Q", quality);
-    if (strip) opts->set("strip", true);
+    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
     im.jpegsave(dest, opts);
   } else if (ends_with(o, ".webp")) {
     VOption *opts = VImage::option()->set("Q", quality);
-    if (strip) opts->set("strip", true);
+    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
     im.webpsave(dest, opts);
   } else if (ends_with(o, ".avif")) {
     // AV1 in HEIF container (aom encode).
-    im.heifsave(dest, VImage::option()->set("Q", quality)->set("compression",
-                                                               "av1"));
+    VOption *opts = VImage::option()->set("Q", quality)->set("compression",
+                                                              "av1");
+    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
+    im.heifsave(dest, opts);
   } else if (ends_with(o, ".heic") || ends_with(o, ".heif")) {
     // HEVC in HEIF container (x265 encode).
-    im.heifsave(dest, VImage::option()->set("Q", quality)->set("compression",
-                                                               "hevc"));
+    VOption *opts = VImage::option()->set("Q", quality)->set("compression",
+                                                              "hevc");
+    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
+    im.heifsave(dest, opts);
   } else if (ends_with(o, ".jxl")) {
-    // JXL saver takes no quality/strip options here; defaults apply.
-    im.jxlsave(dest);
+    // JXL saver takes no quality options here; keep gainmap when stripping
+    // so HDR gainmap metadata survives thumbnailing.
+    if (strip)
+      im.jxlsave(dest,
+                 VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+    else
+      im.jxlsave(dest);
   } else if (ends_with(o, ".jp2")) {
-    im.jp2ksave(dest);
+    if (strip)
+      im.jp2ksave(dest,
+                  VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+    else
+      im.jp2ksave(dest);
   } else {
     // png/tiff/exr/ppm/...: no dedicated binding needed.
-    im.write_to_file(dest);
+    if (strip)
+      im.write_to_file(
+          dest, VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+    else
+      im.write_to_file(dest);
   }
 }
 
