@@ -1,9 +1,12 @@
 // image.h — libvips operations for vips-preview.
 //
-// Output goes straight to its destination, never through a memory buffer:
-// the saver is picked from the output filename extension and streams to
-// the file — or to /dev/stdout when the request sets stdout, so piped
-// output needs no more memory than file output.
+// Output goes straight to its destination, never through a memory buffer —
+// except the generic png/tiff/gif/ppm/... stdout path, which must buffer
+// (vips picks that saver from the filename, and /dev/stdout has no
+// extension): the saver is picked from the output filename extension and
+// streams to the file — or to /dev/stdout when the request sets stdout
+// (dedicated savers stream; generic formats buffer), so piped output
+// needs no more memory than file output.
 //
 // Uses VImage::thumbnail() (the vips thumbnail op) so shrink-on-load +
 // embedded heif thumbnails apply.
@@ -11,6 +14,8 @@
 
 #include <vips/vips8>
 
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -77,8 +82,25 @@ inline void save_image(VImage im, const std::string &output, int quality,
     else
       im.jp2ksave(dest);
   } else {
-    // png/tiff/exr/ppm/...: no dedicated binding needed.
-    if (strip)
+    // png/tiff/gif/ppm/...: no dedicated binding exists. write_to_file
+    // picks the saver from the destination filename, so it cannot target
+    // /dev/stdout (no extension to dispatch on). Buffer with the output
+    // filename as the format suffix, then emit the bytes on stdout.
+    if (to_stdout) {
+      size_t n = 0;
+      void *buf = nullptr;
+      if (strip)
+        im.write_to_buffer(
+            output.c_str(), &buf, &n,
+            VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+      else
+        im.write_to_buffer(output.c_str(), &buf, &n);
+      if (fwrite(buf, 1, n, stdout) != n) {
+        free(buf);
+        throw std::runtime_error("failed writing image bytes to stdout");
+      }
+      free(buf);
+    } else if (strip)
       im.write_to_file(
           dest, VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
     else

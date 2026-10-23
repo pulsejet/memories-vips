@@ -35,6 +35,15 @@ jobs:
           mv ./vips-cli-${{ matrix.platform }}-static.tar.gz ./vips-cli-${{ matrix.asset }}-static.tar.gz
           ls -lh ./*.tar.gz
 
+      - name: Test vips-preview on real fixtures (non-blocking)
+        # Informational only: failures here never block artifact upload
+        # or release. Uses the just-built tarball + checked-in tests/data.
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/cli && tar xzC /tmp/cli -f ./vips-cli-${{ matrix.asset }}-static.tar.gz
+          readelf -d /tmp/cli/vips-preview | grep -q NEEDED && echo "NOT fully static" || echo "fully static: NEEDED=0"
+          VIPS_PREVIEW_BIN=/tmp/cli/vips-preview python3 -m unittest discover -s tests -v
+
       - uses: actions/upload-artifact@v7
         with:
           name: vips-cli-${{ matrix.asset }}-static
