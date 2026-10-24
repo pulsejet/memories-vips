@@ -15,7 +15,7 @@ inline constexpr const char kUsage[] = R"USAGE(usage: echo '<json>' | vips-previ
   {"cmd":"convert","input":"INPUT","output":"OUTPUT","stdout":false,
    "quality":90}
 info prints a JSON object on stdout. thumbnail/convert pick the saver from
-the OUTPUT filename extension (jpg, webp, avif, heic, jxl, jp2, png, ...)
+the OUTPUT filename extension (jpg, webp, avif, heic, png, ...)
 and stream there directly (no full-file buffering) — or to stdout when
 "stdout" is true (OUTPUT still selects the format, no file is written).
 Errors are JSON on stderr: {"error":"..."}.

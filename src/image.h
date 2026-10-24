@@ -26,7 +26,7 @@
 using namespace vips;
 
 /// Save @p im per the @p output filename extension (the request's format:
-/// .jpg/.jpeg, .webp, .avif, .heic/.heif, .jxl, .jp2, anything else via
+/// .jpg/.jpeg, .webp, .avif, .heic/.heif, anything else via
 /// generic filename dispatch for png/tiff/exr/ppm/...). @p quality maps to
 /// saver options (Q/compression) where the saver supports them. Metadata
 /// policy: @p strip removes EXIF etc. — true for thumbnails (smaller
@@ -73,18 +73,6 @@ inline void save_image(VImage im, const std::string &output, int quality,
                                                               "hevc");
     if (strip) opts->set("keep", kThumbnailKeep);
     im.heifsave(dest, opts);
-  } else if (ends_with(o, ".jxl")) {
-    // JXL saver takes no quality options here; keep ICC + gainmap when
-    // stripping so colour and HDR gainmap metadata survive thumbnailing.
-    if (strip)
-      im.jxlsave(dest, VImage::option()->set("keep", kThumbnailKeep));
-    else
-      im.jxlsave(dest);
-  } else if (ends_with(o, ".jp2")) {
-    if (strip)
-      im.jp2ksave(dest, VImage::option()->set("keep", kThumbnailKeep));
-    else
-      im.jp2ksave(dest);
   } else {
     // png/tiff/gif/ppm/...: no dedicated binding exists. write_to_file
     // picks the saver from the destination filename, so it cannot target

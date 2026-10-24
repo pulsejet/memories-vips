@@ -82,8 +82,8 @@ binary can be smoke-tested the same way on x86_64 once binfmt is installed
   stopping before its `rm -rf $TARGET/lib/{pkgconfig,cmake,...}` cleanup,
   so `.pc` + CMake metadata survive for the static rebuilds. Upstream files
   are only ever read, never modified.
-- `build-camera-extras.sh` builds the delta static deps (brotli, dav1d,
-  libde265, x265, openjpeg, Imath, OpenEXR, libraw, libjxl), rebuilds
+- `build-camera-extras.sh` builds the delta static deps (dav1d,
+  libde265, x265, Imath, OpenEXR, libraw), rebuilds
   `libheif` (HEVC+AV1 built in, no plugins) and `libvips` (static, no
   modules), links `src/preview.cc` with `-static`, gates on `readelf`
   showing no `NEEDED`, and packs the tarball with `versions.json`.

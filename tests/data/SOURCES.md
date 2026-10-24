@@ -1,11 +1,10 @@
 # tests/data — real file samples
 
 No synthetic gradients. Every fixture is a real photo, graphic, HDR
-capture, or vector — either a native upstream sample or (one case) a
-real photo transcoded into a container we pin no small native for.
+capture, or vector — a native upstream sample.
 
 Regenerate with `python3 tests/gen_fixtures.py` (needs
-`VIPS_PREVIEW_BIN` for the JXL derive + verify step).
+`VIPS_PREVIEW_BIN` for the verify step).
 
 | File | Source | What it is | Why it's here |
 |---|---|---|---|
@@ -20,8 +19,6 @@ Regenerate with `python3 tests/gen_fixtures.py` (needs
 | `photo.webp` | libvips `1.webp` | Real WebP 550×368 | WebP input |
 | `orientation6.avif` | libvips `avif-orientation-6.avif` | Real AVIF, EXIF orientation 6, 3024×4032 | Orientation handling (`no_rotate=false`) |
 | `example.heic` | libheif `examples/example.heic` | Real HEVC photo 1280×854 | HEIC input |
-| `sample-photo.jxl` | **Derived**: `sample.jpg` → JXL via the pinned `vips-preview` | Real photo pixels, JXL container, 290×442 | JXL input (no small native pinned) |
-| `world.jp2` | libvips `world.jp2` | Real JPEG 2000 800×400 | JP2 input |
 | `sample.tif` | libvips `sample.tif` | Real TIFF photo 290×442 | TIFF input |
 | `logo.svg` | libvips `logo.svg` | Real vector 736×552 | SVG (rsvg) input |
 | `sample.exr` | libvips `sample.exr` | Real OpenEXR 610×406 (float) | EXR input (read-only in this build) |

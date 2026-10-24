@@ -67,8 +67,6 @@ EXPECTED_DIMS = {
     "photo.webp": (550, 368),
     "orientation6.avif": (3024, 4032),
     "example.heic": (1280, 854),
-    "sample-photo.jxl": (290, 442),
-    "world.jp2": (800, 400),
     "sample.tif": (290, 442),
     "logo.svg": (736, 552),
     "sample.exr": (610, 406),
@@ -131,12 +129,6 @@ def check_magic(blob: bytes, ext: str):
         assert b"ftypavif" in blob[:32], f"bad avif {blob[:32]!r}"
     elif ext in (".heic", ".heif"):
         assert b"ftyp" in blob[:32], f"bad heic {blob[:32]!r}"
-    elif ext == ".jxl":
-        assert blob[:4] == b"\x00\x00\x00\x0c" or blob[:2] == b"\xff\x0a", (
-            f"bad jxl {blob[:12]!r}"
-        )
-    elif ext == ".jp2":
-        assert blob[:8] == b"\x00\x00\x00\x0cjP  ", f"bad jp2 {blob[:12]!r}"
     elif ext in (".tiff", ".tif"):
         assert blob[:4] in (b"II*\x00", b"MM\x00*"), f"bad tiff {blob[:8]!r}"
     elif ext == ".gif":
@@ -443,13 +435,26 @@ class TestThumbnail(unittest.TestCase):
 
     def test_default_geometry_is_512(self):
         with tempfile.TemporaryDirectory() as td:
+            # Large photo downscales to exact 512x512 with default crop.
             dst = os.path.join(td, "default.jpg")
             rc, _, err = run_json(
-                {"cmd": "thumbnail", "input": data_path(DRIVER), "output": dst}
+                {
+                    "cmd": "thumbnail",
+                    "input": data_path("landscape.jpg"),
+                    "output": dst,
+                }
             )
             self.assertEqual(rc, 0, err[:300])
             obj = json.loads(run_json({"cmd": "info", "input": dst})[1].decode())
             self.assertEqual((obj["width"], obj["height"]), (512, 512))
+            # Small images are never upscaled (VIPS_SIZE_DOWN).
+            small = os.path.join(td, "small.jpg")
+            rc, _, err = run_json(
+                {"cmd": "thumbnail", "input": data_path(DRIVER), "output": small}
+            )
+            self.assertEqual(rc, 0, err[:300])
+            obj = json.loads(run_json({"cmd": "info", "input": small})[1].decode())
+            self.assertEqual((obj["width"], obj["height"]), (290, 442))
 
     def test_quality_options(self):
         with tempfile.TemporaryDirectory() as td:
@@ -541,8 +546,6 @@ class TestSaverDispatch(unittest.TestCase):
         ".avif",
         ".heic",
         ".heif",
-        ".jxl",
-        ".jp2",
         ".png",
         ".tiff",
         ".gif",
@@ -574,7 +577,7 @@ class TestSaverDispatch(unittest.TestCase):
     def test_thumbnail_saver_matrix(self):
         # Strip=true path (keep=icc,gainmap); thumbnail of a real photo.
         with tempfile.TemporaryDirectory() as td:
-            for ext in (".jpg", ".webp", ".avif", ".heic", ".jxl", ".png"):
+            for ext in (".jpg", ".webp", ".avif", ".heic", ".png"):
                 with self.subTest(cmd="thumbnail", ext=ext):
                     dst = os.path.join(td, f"thumb{ext}")
                     rc, _, err = run_json(
@@ -591,7 +594,7 @@ class TestSaverDispatch(unittest.TestCase):
 
     def test_unsupported_extensions_error(self):
         with tempfile.TemporaryDirectory() as td:
-            for ext in (".bmp", ".xyz", ".svg", ".pdf", ".exr"):
+            for ext in (".bmp", ".xyz", ".svg", ".pdf", ".exr", ".jxl", ".jp2"):
                 with self.subTest(ext=ext):
                     rc, out, err = run_json(
                         {

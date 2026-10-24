@@ -25,9 +25,9 @@ else
 fi
 
 : "${PLATFORM:?PLATFORM must be set (linux-musl-x64, linux-musl-arm64)}"
-: "${VERSION_BROTLI:?}" "${VERSION_DAV1D:?}" "${VERSION_LIBDE265:?}" "${VERSION_X265:?}"
-: "${VERSION_OPENJPEG:?}" "${VERSION_IMATH:?}" "${VERSION_OPENEXR:?}"
-: "${VERSION_LIBRAW:?}" "${VERSION_LIBJXL:?}"
+: "${VERSION_DAV1D:?}" "${VERSION_LIBDE265:?}" "${VERSION_X265:?}"
+: "${VERSION_IMATH:?}" "${VERSION_OPENEXR:?}"
+: "${VERSION_LIBRAW:?}"
 : "${HEIF_WITH_X265:?}" "${HEIF_WITH_LIBDE265:?}" "${HEIF_WITH_AOM:?}" "${HEIF_WITH_DAV1D:?}"
 
 # --- env (mirror upstream build/posix.sh; tolerate already-set values) ---
@@ -71,10 +71,6 @@ cmake_dep() {
   cmake --install "${DEPS}/${name}/_build" --strip
 }
 
-# brotli (libjxl needs it; upstream freetype stays brotli-disabled)
-cmake_dep brotli "https://github.com/google/brotli/archive/v${VERSION_BROTLI}.tar.gz" \
-  . MinSizeRel -DBROTLI_DISABLE_TESTS=ON -DBROTLI_BUNDLED_MODE=OFF
-
 # dav1d (AV1 decode for libheif)
 rm -rf "${DEPS}/dav1d" && mkdir -p "${DEPS}/dav1d"
 $CURL "https://code.videolan.org/videolan/dav1d/-/archive/${VERSION_DAV1D}/dav1d-${VERSION_DAV1D}.tar.gz" \
@@ -110,11 +106,6 @@ cmake_dep heif "https://github.com/strukturag/libheif/releases/download/v${VERSI
   -DWITH_AOM="${HEIF_WITH_AOM}" -DWITH_DAV1D="${HEIF_WITH_DAV1D}" \
   -DWITH_RAV1E=0 -DWITH_SvtEnc=0
 
-# openjpeg (JP2)
-cmake_dep openjpeg "https://github.com/uclouvain/openjpeg/archive/v${VERSION_OPENJPEG}.tar.gz" \
-  . MinSizeRel -DBUILD_CODEC=OFF -DBUILD_MJ2=OFF -DBUILD_JPIP=OFF -DBUILD_JPWL=OFF \
-  -DBUILD_JP3D=OFF -DBUILD_TESTING=OFF -DBUILD_DOC=OFF
-
 # Imath + OpenEXR
 cmake_dep imath "https://github.com/AcademySoftwareFoundation/Imath/archive/v${VERSION_IMATH}.tar.gz" \
   . MinSizeRel -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF
@@ -132,16 +123,6 @@ $CURL "https://www.libraw.org/data/LibRaw-${VERSION_LIBRAW}.tar.gz" \
     --disable-dependency-tracking --disable-examples --disable-jasper --disable-openmp && \
   make install-strip)
 
-# libjxl (JPEG-XL; system libs only, no absent-submodule skcms/sjpeg)
-cmake_dep libjxl "https://github.com/libjxl/libjxl/archive/v${VERSION_LIBJXL}.tar.gz" \
-  . MinSizeRel -DBUILD_TESTING=OFF \
-  -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF \
-  -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_JNI=OFF \
-  -DJPEGXL_ENABLE_VIEWERS=OFF -DJPEGXL_ENABLE_DOXYGEN=OFF \
-  -DJPEGXL_ENABLE_SKCMS=OFF -DJPEGXL_ENABLE_SJPEG=OFF \
-  -DJPEGXL_STATIC=ON -DJPEGXL_BUNDLE_LIBPNG=OFF \
-  -DJPEGXL_FORCE_SYSTEM_BROTLI=ON -DJPEGXL_FORCE_SYSTEM_HWY=ON -DJPEGXL_FORCE_SYSTEM_LCMS2=ON
-
 # libvips STATIC with camera loaders, modules disabled (no dlopen).
 # -Dppm/-Dradiance are built-in (no deps); upstream leaves them off.
 rm -rf "${DEPS}/vips-static-camera" && mkdir -p "${DEPS}/vips-static-camera"
@@ -157,7 +138,7 @@ $CURL "https://github.com/libvips/libvips/releases/download/v${VERSION_VIPS}/vip
     -Dopenslide=disabled -Dpdfium=disabled -Dpoppler=disabled -Dquantizr=disabled \
     -Dheif-module=disabled -Djpeg-xl-module=disabled -Dmagick-module=disabled \
     -Dopenslide-module=disabled -Dpoppler-module=disabled \
-    -Draw=enabled -Dheif=enabled -Djpeg-xl=enabled -Dopenjpeg=enabled \
+    -Draw=enabled -Dheif=enabled -Djpeg-xl=disabled -Dopenjpeg=disabled \
     -Dspng=enabled -Dopenexr=enabled -Dcgif=enabled \
     -Dppm=true -Dradiance=true -Danalyze=false && \
   meson install -C _build --tag devel)

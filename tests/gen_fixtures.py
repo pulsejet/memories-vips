@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Fetch real-photo fixtures into tests/data (no synthetic gradients).
 
-Every input is a real file: either a native upstream sample (photo,
-graphic, HDR, vector) or a transcode of a real photo into a container
-we have no small native sample for (JXL). Nothing here is a generated
+Every input is a real file: a native upstream sample (photo,
+graphic, HDR, vector). Nothing here is a generated
 gradient/pattern.
 
 Usage:
-    VIPS_PREVIEW_BIN=/tmp/.../vips-preview python3 tests/gen_fixtures.py
-    python3 tests/gen_fixtures.py --bin /path/to/vips-preview
+    python3 tests/gen_fixtures.py
 
 Only stdlib is used (urllib). Re-running is idempotent: files are
 skipped when already present with the expected size.
@@ -39,7 +37,6 @@ FIXTURES: list[tuple[str, str, int | None]] = [
     ("cogs.gif", f"{LIBVIPS}/cogs.gif", 2759),
     ("photo.webp", f"{LIBVIPS}/1.webp", 30320),
     ("orientation6.avif", f"{LIBVIPS}/avif-orientation-6.avif", 162011),
-    ("world.jp2", f"{LIBVIPS}/world.jp2", 63958),
     ("sample.tif", f"{LIBVIPS}/sample.tif", 769526),
     ("logo.svg", f"{LIBVIPS}/logo.svg", 4700),
     ("sample.exr", f"{LIBVIPS}/sample.exr", 378570),
@@ -76,7 +73,7 @@ def find_binary(explicit: str | None) -> str:
             return c
     raise SystemExit(
         "vips-preview binary not found; set VIPS_PREVIEW_BIN or pass --bin "
-        "(needed to derive sample-photo.jxl and verify fixtures)"
+        "(needed to verify fixtures)"
     )
 
 
@@ -97,26 +94,6 @@ def fetch(url: str, dest: str, expect: int | None) -> None:
             "(upstream changed; update the table)",
             file=sys.stderr,
         )
-
-
-def derive_jxl(binpath: str) -> None:
-    """Encode sample-photo.jxl from the real photo sample.jpg.
-
-    No small native real-world JXL photo sample is pinned; the pixels
-    are still a real photograph, just carried in a locally-encoded
-    JXL container.
-    """
-    src = os.path.join(DATA, "sample.jpg")
-    dst = os.path.join(DATA, "sample-photo.jxl")
-    p = subprocess.run(
-        [binpath],
-        input=json.dumps({"cmd": "convert", "input": src, "output": dst}).encode(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if p.returncode != 0:
-        raise SystemExit(f"JXL derive failed: {p.stderr.decode()[:300]}")
-    print(f"derived sample-photo.jxl {os.path.getsize(dst)} bytes from sample.jpg")
 
 
 def verify(binpath: str) -> None:
@@ -148,7 +125,6 @@ def main() -> None:
     print(f"binary: {binpath}")
     for name, url, expect in FIXTURES:
         fetch(url, os.path.join(DATA, name), expect)
-    derive_jxl(binpath)
     if not args.no_verify:
         verify(binpath)
 
