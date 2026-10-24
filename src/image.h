@@ -147,11 +147,13 @@ inline int run_thumbnail(const Request &r) {
                   ? VImage::thumbnail(r.input.c_str(), r.width,
                                       VImage::option()
                                           ->set("height", r.height)
+                                          ->set("size", (int)VIPS_SIZE_DOWN)
                                           ->set("no_rotate", false))
                   : VImage::thumbnail(r.input.c_str(), r.width,
                                       VImage::option()
                                           ->set("height", r.height)
                                           ->set("crop", (int)interesting)
+                                          ->set("size", (int)VIPS_SIZE_DOWN)
                                           ->set("no_rotate", false));
 
   // Stream straight to the destination; nothing buffered in memory.
