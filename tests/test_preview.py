@@ -117,6 +117,31 @@ def assert_error_json(test: unittest.TestCase, stderr: str, needle: str = ""):
         test.assertIn(needle, obj["error"], f"error {obj['error']!r} lacks {needle!r}")
 
 
+def assert_info_json(
+    test: unittest.TestCase,
+    stdout: bytes,
+    stderr: str,
+    width: int | None = None,
+    height: int | None = None,
+):
+    """Success contract: stdout holds file bytes only (empty in file mode),
+    stderr holds exactly one JSON info line (no 'error' key)."""
+    test.assertEqual(stdout, b"", f"stdout must be file bytes only, got {stdout[:80]!r}")
+    test.assertTrue(stderr.strip(), "expected info JSON on stderr")
+    try:
+        obj = json.loads(stderr.strip().splitlines()[0])
+    except json.JSONDecodeError:
+        test.fail(f"stderr is not JSON: {stderr[:300]!r}")
+    test.assertNotIn("error", obj, f"stderr is an error, not info: {obj!r}")
+    for key in ("width", "height", "bands", "format", "interpretation"):
+        test.assertIn(key, obj, f"info JSON missing {key}: {obj!r}")
+    if width is not None:
+        test.assertEqual(obj["width"], width, f"info width: {obj!r}")
+    if height is not None:
+        test.assertEqual(obj["height"], height, f"info height: {obj!r}")
+    return obj
+
+
 def check_magic(blob: bytes, ext: str):
     ext = ext.lower()
     if ext in (".jpg", ".jpeg"):
@@ -197,7 +222,7 @@ class TestProtocolValidation(unittest.TestCase):
             for cmd in ("INFO", "Info", "info"):
                 rc, out, err = run_json({"cmd": cmd, "input": data_path(DRIVER)})
                 self.assertEqual(rc, 0, f"{cmd}: {err[:200]}")
-                self.assertEqual(json.loads(out.decode())["width"], 290)
+                self.assertEqual(assert_info_json(self, out, err)["width"], 290)
             for cmd in ("thumb", "THUMB", "Thumbnail", "THUMBNAIL"):
                 dst = os.path.join(td, f"alias_{cmd}.jpg")
                 rc, _, err = run_json(
@@ -232,7 +257,7 @@ class TestProtocolValidation(unittest.TestCase):
         # info returns before output validation (protocol.h early return)
         rc, out, err = run_json({"cmd": "info", "input": data_path(DRIVER)})
         self.assertEqual(rc, 0, err[:200])
-        obj = json.loads(out.decode())
+        obj = assert_info_json(self, out, err)
         self.assertEqual((obj["width"], obj["height"]), (290, 442))
 
     def test_stdout_must_be_boolean(self):
@@ -321,9 +346,8 @@ class TestInfo(unittest.TestCase):
                     self.skipTest(f"missing fixture {name}")
                 rc, out, err = run_json({"cmd": "info", "input": fp})
                 self.assertEqual(rc, 0, f"{name}: {err[:300]}")
-                self.assertEqual(err, "")
-                obj = json.loads(out.decode())
-                for key in ("width", "height", "bands", "format", "interpretation", "filename"):
+                obj = assert_info_json(self, out, err)
+                for key in ("filename",):
                     self.assertIn(key, obj, f"{name} missing {key}")
                 ew, eh = EXPECTED_DIMS[name]
                 self.assertEqual((obj["width"], obj["height"]), (ew, eh))
@@ -341,13 +365,14 @@ class TestInfo(unittest.TestCase):
             with self.subTest(input=name):
                 rc, out, err = run_json({"cmd": "info", "input": data_path(name)})
                 self.assertEqual(rc, 0, err[:200])
-                self.assertEqual(json.loads(out.decode())["bands"], bands)
+                self.assertEqual(assert_info_json(self, out, err)["bands"], bands)
 
-    def test_info_stdout_clean_stderr_empty(self):
+    def test_info_stderr_clean_stdout_empty(self):
         rc, out, err = run_json({"cmd": "info", "input": data_path("rgba.png")})
         self.assertEqual(rc, 0)
-        self.assertEqual(err, "")
-        self.assertTrue(out.strip().startswith(b"{"))
+        self.assertEqual(out, b"")
+        obj = assert_info_json(self, out, err)
+        self.assertTrue(err.strip().startswith("{"))
 
 
 class TestThumbnail(unittest.TestCase):
@@ -374,7 +399,9 @@ class TestThumbnail(unittest.TestCase):
                     )
                     self.assertEqual(rc, 0, f"{name}: {err[:300]}")
                     self.assertEqual(out, b"")
-                    self.assertEqual(err, "")
+                    obj = assert_info_json(self, out, err)
+                    self.assertGreater(obj["width"], 0)
+                    self.assertGreater(obj["height"], 0)
                     self.assertTrue(os.path.isfile(dst))
                     self.assertGreater(os.path.getsize(dst), 0)
                     check_magic(read_bytes(dst), ".jpg")
@@ -405,12 +432,30 @@ class TestThumbnail(unittest.TestCase):
                         }
                     )
                     self.assertEqual(rc, 0, err[:200])
-                    rc2, out2, _ = run_json({"cmd": "info", "input": dst})
+                    rc2, out2, err2 = run_json({"cmd": "info", "input": dst})
                     self.assertEqual(rc2, 0)
-                    obj = json.loads(out2.decode())
+                    obj = assert_info_json(self, out2, err2)
                     self.assertEqual(
                         (obj["width"], obj["height"]), expected, f"{name}/{crop}"
                     )
+
+    def test_thumbnail_reports_output_info_on_stderr(self):
+        # thumbnail success carries the OUTPUT dims on stderr (no 2nd info
+        # call needed); stdout stays empty in file mode.
+        with tempfile.TemporaryDirectory() as td:
+            dst = os.path.join(td, "rep.jpg")
+            rc, out, err = run_json(
+                {
+                    "cmd": "thumbnail",
+                    "input": data_path("landscape.jpg"),
+                    "output": dst,
+                    "width": 16,
+                    "height": 16,
+                }
+            )
+            self.assertEqual(rc, 0, err[:200])
+            obj = assert_info_json(self, out, err, width=16, height=16)
+            self.assertEqual(obj.get("output"), dst)
 
     def test_gainmap_thumbnails_stay_uhdr_capable(self):
         # UltraHDR inputs exercise the keep=icc,gainmap saver option: the
@@ -429,9 +474,9 @@ class TestThumbnail(unittest.TestCase):
                         }
                     )
                     self.assertEqual(rc, 0, f"{name}: {err[:300]}")
-                    rc2, out2, _ = run_json({"cmd": "info", "input": dst})
+                    rc2, out2, err2 = run_json({"cmd": "info", "input": dst})
                     self.assertEqual(rc2, 0)
-                    self.assertEqual(json.loads(out2.decode())["width"], 32)
+                    self.assertEqual(assert_info_json(self, out2, err2)["width"], 32)
 
     def test_default_geometry_is_512(self):
         with tempfile.TemporaryDirectory() as td:
@@ -445,7 +490,7 @@ class TestThumbnail(unittest.TestCase):
                 }
             )
             self.assertEqual(rc, 0, err[:300])
-            obj = json.loads(run_json({"cmd": "info", "input": dst})[1].decode())
+            obj = assert_info_json(self, *run_json({"cmd": "info", "input": dst})[1:])
             self.assertEqual((obj["width"], obj["height"]), (512, 512))
             # Small images are never upscaled (VIPS_SIZE_DOWN).
             small = os.path.join(td, "small.jpg")
@@ -453,7 +498,7 @@ class TestThumbnail(unittest.TestCase):
                 {"cmd": "thumbnail", "input": data_path(DRIVER), "output": small}
             )
             self.assertEqual(rc, 0, err[:300])
-            obj = json.loads(run_json({"cmd": "info", "input": small})[1].decode())
+            obj = assert_info_json(self, *run_json({"cmd": "info", "input": small})[1:])
             self.assertEqual((obj["width"], obj["height"]), (290, 442))
 
     def test_quality_options(self):
@@ -504,8 +549,8 @@ class TestConvert(unittest.TestCase):
                 }
             )
             self.assertEqual(rc, 0, err[:200])
-            obj = json.loads(
-                run_json({"cmd": "info", "input": os.path.join(td, "wide.png")})[1].decode()
+            obj = assert_info_json(
+                self, *run_json({"cmd": "info", "input": os.path.join(td, "wide.png")})[1:]
             )
             self.assertEqual((obj["width"], obj["height"]), (800, 600))
 
@@ -531,7 +576,7 @@ class TestConvert(unittest.TestCase):
                 {"cmd": "convert", "input": data_path("rgba.png"), "output": dst}
             )
             self.assertEqual(rc, 0, err[:200])
-            obj = json.loads(run_json({"cmd": "info", "input": dst})[1].decode())
+            obj = assert_info_json(self, *run_json({"cmd": "info", "input": dst})[1:])
             self.assertEqual(obj["bands"], 4)
 
 
@@ -566,13 +611,13 @@ class TestSaverDispatch(unittest.TestCase):
                         }
                     )
                     self.assertEqual(rc, 0, f"{ext}: {err[:300]}")
-                    self.assertEqual(out, b"")
+                    self.assertEqual(assert_info_json(self, out, err)["width"], 290)
                     blob = read_bytes(dst)
                     self.assertGreater(len(blob), 0)
                     check_magic(blob, ext)
                     rc2, out2, err2 = run_json({"cmd": "info", "input": dst})
                     self.assertEqual(rc2, 0, err2[:200])
-                    self.assertEqual(json.loads(out2.decode())["width"], 290)
+                    self.assertEqual(assert_info_json(self, out2, err2)["width"], 290)
 
     def test_thumbnail_saver_matrix(self):
         # Strip=true path (keep=icc,gainmap); thumbnail of a real photo.
@@ -609,7 +654,7 @@ class TestSaverDispatch(unittest.TestCase):
 
 
 class TestStdoutStreaming(unittest.TestCase):
-    """image.h to_stdout: bytes on stdout, no file, stderr clean."""
+    """image.h to_stdout: bytes on stdout, no file, info on stderr."""
 
     def test_stdout_matches_file_bytes(self):
         with tempfile.TemporaryDirectory() as td:
@@ -629,7 +674,8 @@ class TestStdoutStreaming(unittest.TestCase):
                             }
                         )
                         self.assertEqual(rc, 0, err[:200])
-                        self.assertEqual(err, "")
+                        obj = json.loads(err.strip().splitlines()[0])
+                        self.assertEqual((obj["width"], obj["height"]), (32, 32))
                         self.assertGreater(len(blob), 0)
                         check_magic(blob, ext)
                         self.assertFalse(
@@ -639,9 +685,9 @@ class TestStdoutStreaming(unittest.TestCase):
                         probe = os.path.join(td, f"probe{ext}")
                         with open(probe, "wb") as f:
                             f.write(blob)
-                        rc2, out2, _ = run_json({"cmd": "info", "input": probe})
+                        rc2, out2, err2 = run_json({"cmd": "info", "input": probe})
                         self.assertEqual(rc2, 0)
-                        self.assertEqual(json.loads(out2.decode())["width"], 32)
+                        self.assertEqual(assert_info_json(self, out2, err2)["width"], 32)
             finally:
                 os.chdir(cwd)
 
@@ -655,6 +701,8 @@ class TestStdoutStreaming(unittest.TestCase):
             }
         )
         self.assertEqual(rc, 0, err[:200])
+        obj = json.loads(err.strip().splitlines()[0])
+        self.assertEqual((obj["width"], obj["height"]), (290, 442))
         check_magic(blob, ".avif")
 
     def test_file_mode_stdout_empty(self):
@@ -670,8 +718,7 @@ class TestStdoutStreaming(unittest.TestCase):
                 }
             )
             self.assertEqual(rc, 0)
-            self.assertEqual(out, b"")
-            self.assertEqual(err, "")
+            assert_info_json(self, out, err, width=32, height=32)
 
     def test_stdout_errors_stay_on_stderr(self):
         rc, out, err = run_json(

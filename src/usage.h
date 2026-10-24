@@ -21,13 +21,20 @@ Commands — send exactly one JSON object on stdin:
   {"cmd":"convert","input":"INPUT","output":"OUTPUT","stdout":false,
    "quality":90}
 
-  info       print image metadata (width, height, bands, ...) as JSON on stdout
+  info       print image metadata (width, height, bands, ...) as JSON on stderr
   thumbnail  resize/crop to WIDTH x HEIGHT (default 512 x 512), save to OUTPUT
   convert    re-encode INPUT to OUTPUT without resizing
 
 Options:
   -h, --help     show this help and exit
   -V, --version  print the libvips version and exit
+
+Streams:
+  stdout carries file bytes only: empty when writing OUTPUT files,
+    image bytes when "stdout" is true. Every successful command prints
+    one JSON info line on stderr (info reports INPUT; thumbnail/convert
+    report the OUTPUT image: width, height, bands, format,
+    interpretation, output) — no second info call needed.
 
 Notes:
   Saver is picked from the OUTPUT filename extension

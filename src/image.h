@@ -1,22 +1,20 @@
-// image.h — libvips operations for vips-preview.
+// image.h — libvips ops for vips-preview.
 //
-// Output goes straight to its destination, never through a memory buffer —
-// except the generic png/tiff/gif/ppm/... stdout path, which must buffer
-// (vips picks that saver from the filename, and /dev/stdout has no
-// extension): the saver is picked from the output filename extension and
-// streams to the file — or to /dev/stdout when the request sets stdout
-// (dedicated savers stream; generic formats buffer), so piped output
-// needs no more memory than file output.
+// Saver is picked from the OUTPUT extension; output streams straight to
+// the file (or /dev/stdout when "stdout" is true) without buffering —
+// except generic formats (png/tiff/...) to stdout, which must buffer
+// (/dev/stdout has no extension to dispatch on).
 //
-// Uses VImage::thumbnail() (the vips thumbnail op) so shrink-on-load +
-// embedded heif thumbnails apply.
+// Contract: stdout = file bytes only (empty in file mode). One JSON info
+// line goes to stderr per command (input dims for info, output dims for
+// thumbnail/convert — free from the in-memory image); errors are
+// {"error":...} on stderr. Uses VImage::thumbnail() (shrink-on-load).
 #pragma once
 
 #include <vips/vips8>
 
 #include <cstdio>
 #include <cstdlib>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -25,35 +23,23 @@
 
 using namespace vips;
 
-/// Save @p im per the @p output filename extension (the request's format:
-/// .jpg/.jpeg, .webp, .avif, .heic/.heif, anything else via
-/// generic filename dispatch for png/tiff/exr/ppm/...). @p quality maps to
-/// saver options (Q/compression) where the saver supports them. Metadata
-/// policy: @p strip removes EXIF etc. — true for thumbnails (smaller
-/// payloads, no location leaks), false for convert (preserve metadata).
-/// Thumbnails still keep ICC + gainmap (`keep=icc,gainmap`): UltraHDR JPEGs
-/// are SDR base + gainmap metadata and jpegsave auto-forwards to uhdrsave
-/// only when the gainmap is present — `strip` would drop it and force SDR;
-/// and `thumbnail` does not colour-convert (it only maps the interpretation
-/// to sRGB/B_W), so wide-gamut inputs (AdobeRGB, Display P3) must keep
-/// their ICC profile — stripping it leaves wide-gamut pixels tagged as
-/// sRGB and renders a bit undersaturated. When @p to_stdout, the same saver streams to /dev/stdout
-/// and no file is written (`output` still selects the format).
+/// Save @p im per the OUTPUT extension (.jpg/.webp/.avif/.heic, else
+/// generic dispatch for png/tiff/...). @p strip drops EXIF etc. (true for
+/// thumbnails, false for convert) but keeps ICC + gainmap, so UHDR stays
+/// UHDR and wide-gamut stays saturated. @p to_stdout streams to /dev/stdout
+/// (`output` still selects the format, no file written).
 inline void save_image(VImage im, const std::string &output, int quality,
                        bool strip, bool to_stdout) {
-  // Thumbnails: keep colour (ICC) + HDR (gainmap), drop the rest (EXIF/IPTC).
+  // Thumbnails: keep ICC + gainmap, drop EXIF/IPTC.
   static const VipsForeignKeep kThumbnailKeep =
       (VipsForeignKeep)(VIPS_FOREIGN_KEEP_ICC | VIPS_FOREIGN_KEEP_GAINMAP);
-  // Destination: real file, or the stdout pipe (extension still from output).
+  // Real file, or the stdout pipe (extension still from output).
   const char *dest = to_stdout ? "/dev/stdout" : output.c_str();
 
-  // Saver dispatch on the output filename extension.
   std::string o = lower(output);
 
   if (ends_with(o, ".jpg") || ends_with(o, ".jpeg")) {
-    // MozJPEG path; strip only for thumbnails, never for convert.
-    // keep=icc,gainmap (not strip) so UHDR thumbnails stay UHDR: jpegsave
-    // forwards to uhdrsave when gainmap-data is present.
+    // keep=icc,gainmap (not strip) so UHDR thumbnails stay UHDR.
     VOption *opts = VImage::option()->set("Q", quality);
     if (strip) opts->set("keep", kThumbnailKeep);
     im.jpegsave(dest, opts);
@@ -74,10 +60,7 @@ inline void save_image(VImage im, const std::string &output, int quality,
     if (strip) opts->set("keep", kThumbnailKeep);
     im.heifsave(dest, opts);
   } else {
-    // png/tiff/gif/ppm/...: no dedicated binding exists. write_to_file
-    // picks the saver from the destination filename, so it cannot target
-    // /dev/stdout (no extension to dispatch on). Buffer with the output
-    // filename as the format suffix, then emit the bytes on stdout.
+    // No dedicated binding: buffer via the output suffix, emit on stdout.
     if (to_stdout) {
       size_t n = 0;
       void *buf = nullptr;
@@ -99,38 +82,51 @@ inline void save_image(VImage im, const std::string &output, int quality,
   }
 }
 
-/// info: print image metadata as a JSON object on stdout.
-inline int run_info(const Request &r) {
-  // Sequential access: header-only read, no full decode needed.
-  VImage im = VImage::new_from_file(r.input.c_str(),
-                                    VImage::option()->set("access", "sequential"));
+/// One JSON info line on stderr (stdout = file bytes only).
+inline void print_result_info(const json &o) {
+  fprintf(stderr, "%s\n", o.dump().c_str());
+}
 
-  // Same fields as the old text output, now as JSON.
+/// Info JSON for @p im (dims free from memory, no re-read): @p output
+/// labels thumbnail/convert results, else filename is used (info).
+/// By value: VImage copies are cheap (ref-counted).
+inline json image_info_json(VImage im, const std::string &input,
+                            const std::string &output) {
   json o;
   o["width"] = im.width();
   o["height"] = im.height();
   o["bands"] = im.bands();
   o["format"] = (int)im.format();
   o["interpretation"] = (int)im.interpretation();
-  o["filename"] = im.filename() ? im.filename() : r.input;
+  if (!output.empty())
+    o["output"] = output;
+  else
+    o["filename"] = im.filename() ? im.filename() : input;
+  return o;
+}
 
-  std::cout << o.dump() << "\n";
+/// info: image metadata as JSON on stderr (stdout stays empty).
+inline int run_info(const Request &r) {
+  // Header-only read, no full decode.
+  VImage im = VImage::new_from_file(r.input.c_str(),
+                                    VImage::option()->set("access", "sequential"));
+
+  print_result_info(image_info_json(im, r.input, ""));
 
   return 0;
 }
 
 /// thumbnail: shrink-on-load crop/resize, then save (file or stdout).
 inline int run_thumbnail(const Request &r) {
-  // Map the crop name to vips' interest point; attention is the default.
+  // Map crop name to vips interest; attention is default ("attention"/"none"
+  // need no mapping; parse_request rejects the rest).
   VipsInteresting interesting = VIPS_INTERESTING_ATTENTION;
   if (r.crop == "low")
     interesting = VIPS_INTERESTING_LOW;
   else if (r.crop == "high")
     interesting = VIPS_INTERESTING_HIGH;
-  // "attention" (default) and "none" need no mapping; other values are
-  // rejected by parse_request, so no error branch here.
 
-  // "none" keeps aspect (fit); otherwise crop to exactly w x h.
+  // "none" fits aspect; otherwise exact w x h crop.
   VImage im = (r.crop == "none")
                   ? VImage::thumbnail(r.input.c_str(), r.width,
                                       VImage::option()
@@ -144,20 +140,25 @@ inline int run_thumbnail(const Request &r) {
                                           ->set("size", (int)VIPS_SIZE_DOWN)
                                           ->set("no_rotate", false));
 
-  // Stream straight to the destination; nothing buffered in memory.
-  // Thumbnails strip metadata; convert (below) preserves it.
+  // Thumbnails strip metadata (convert preserves it).
   save_image(im, r.output, r.quality, true, r.to_stdout);
+
+  // Report OUTPUT dims (free from `im`).
+  print_result_info(image_info_json(im, r.input, r.output));
 
   return 0;
 }
 
 /// convert: full decode, then save (file or stdout, no resize).
 inline int run_convert(const Request &r) {
-  // Full decode (unlike thumbnail, no shrink-on-load fast path).
+  // Full decode (no shrink-on-load fast path).
   VImage im = VImage::new_from_file(r.input.c_str());
 
-  // Never strip here: convert must preserve EXIF/metadata.
+  // Never strip: preserve EXIF/metadata.
   save_image(im, r.output, r.quality, false, r.to_stdout);
+
+  // Report OUTPUT dims (free from `im`).
+  print_result_info(image_info_json(im, r.input, r.output));
 
   return 0;
 }

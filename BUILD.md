@@ -61,8 +61,9 @@ the main OOM risk. Everything else stays at `-j$(nproc)`.
 mkdir -p /tmp/cli && tar xzC /tmp/cli -f vips-cli-linux-musl-x64-static.tar.gz
 readelf -d /tmp/cli/vips-preview | grep -c NEEDED   # must print 0 (fully static)
 python3 -c "open('/tmp/in.ppm','wb').write(b'P6\n64 64\n255\n'+bytes([200,30,30])*64*64)"
-echo '{"cmd":"info","input":"/tmp/in.ppm"}' | /tmp/cli/vips-preview
+echo '{"cmd":"info","input":"/tmp/in.ppm"}' | /tmp/cli/vips-preview 2>&1 >/dev/null
 # {"bands":3,"filename":"/tmp/in.ppm","format":...,"height":64,"interpretation":...,"width":64}
+# (info JSON goes to stderr; stdout carries file bytes only, so it stays empty here)
 echo '{"cmd":"convert","input":"/tmp/in.ppm","output":"/tmp/a.avif"}' \
   | /tmp/cli/vips-preview                             # AV1 encode (aom)
 echo '{"cmd":"convert","input":"/tmp/in.ppm","output":"/tmp/a.heic"}' \
