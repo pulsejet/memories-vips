@@ -363,7 +363,7 @@ class TestThumbnail(unittest.TestCase):
 
     def test_thumbnail_smoke_all_inputs(self):
         # Every real input thumbnails to jpg (jpegsave strip path with
-        # keep=gainmap). Shrink-on-load keeps even 12MP AVIF / 8MP UHDR fast.
+        # keep=icc,gainmap). Shrink-on-load keeps even 12MP AVIF / 8MP UHDR fast.
         with tempfile.TemporaryDirectory() as td:
             for name in ALL_INPUTS:
                 with self.subTest(input=name):
@@ -421,7 +421,7 @@ class TestThumbnail(unittest.TestCase):
                     )
 
     def test_gainmap_thumbnails_stay_uhdr_capable(self):
-        # UltraHDR inputs exercise the keep=gainmap saver option: the
+        # UltraHDR inputs exercise the keep=icc,gainmap saver option: the
         # thumbnail must succeed and re-read as an image.
         with tempfile.TemporaryDirectory() as td:
             for name in ("ultra-hdr.jpg", "gainmap-odd.jpg"):
@@ -572,7 +572,7 @@ class TestSaverDispatch(unittest.TestCase):
                     self.assertEqual(json.loads(out2.decode())["width"], 290)
 
     def test_thumbnail_saver_matrix(self):
-        # Strip=true path (keep=gainmap); thumbnail of a real photo.
+        # Strip=true path (keep=icc,gainmap); thumbnail of a real photo.
         with tempfile.TemporaryDirectory() as td:
             for ext in (".jpg", ".webp", ".avif", ".heic", ".jxl", ".png"):
                 with self.subTest(cmd="thumbnail", ext=ext):

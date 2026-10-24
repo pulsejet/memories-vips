@@ -26,7 +26,7 @@ Regenerate with `python3 tests/gen_fixtures.py` (needs
 | `logo.svg` | libvips `logo.svg` | Real vector 736×552 | SVG (rsvg) input |
 | `sample.exr` | libvips `sample.exr` | Real OpenEXR 610×406 (float) | EXR input (read-only in this build) |
 | `sample.hdr` | libvips `sample.hdr` | Real Radiance 141×980 | HDR input |
-| `ultra-hdr.jpg` | libvips `ultra-hdr.jpg` | Real UltraHDR gainmap photo 3840×2160 | `keep=gainmap` thumbnail path |
+| `ultra-hdr.jpg` | libvips `ultra-hdr.jpg` | Real UltraHDR gainmap photo 3840×2160 | `keep=icc,gainmap` thumbnail path |
 | `gainmap-odd.jpg` | libvips `gainmap-odd-dimensions.jpg` | Tiny gainmap edge case 129×97 | Odd-dimension gainmap |
 
 License note: fixtures remain the property of their upstreams — check

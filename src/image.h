@@ -31,13 +31,19 @@ using namespace vips;
 /// saver options (Q/compression) where the saver supports them. Metadata
 /// policy: @p strip removes EXIF etc. — true for thumbnails (smaller
 /// payloads, no location leaks), false for convert (preserve metadata).
-/// Thumbnails still keep the gainmap (`keep=gainmap`): UltraHDR JPEGs are
-/// SDR base + gainmap metadata and jpegsave auto-forwards to uhdrsave only
-/// when the gainmap is present — `strip` would drop it and force SDR.
-/// When @p to_stdout, the same saver streams to /dev/stdout and no file is
-/// written (`output` still selects the format).
+/// Thumbnails still keep ICC + gainmap (`keep=icc,gainmap`): UltraHDR JPEGs
+/// are SDR base + gainmap metadata and jpegsave auto-forwards to uhdrsave
+/// only when the gainmap is present — `strip` would drop it and force SDR;
+/// and `thumbnail` does not colour-convert (it only maps the interpretation
+/// to sRGB/B_W), so wide-gamut inputs (AdobeRGB, Display P3) must keep
+/// their ICC profile — stripping it leaves wide-gamut pixels tagged as
+/// sRGB and renders a bit undersaturated. When @p to_stdout, the same saver streams to /dev/stdout
+/// and no file is written (`output` still selects the format).
 inline void save_image(VImage im, const std::string &output, int quality,
                        bool strip, bool to_stdout) {
+  // Thumbnails: keep colour (ICC) + HDR (gainmap), drop the rest (EXIF/IPTC).
+  static const VipsForeignKeep kThumbnailKeep =
+      (VipsForeignKeep)(VIPS_FOREIGN_KEEP_ICC | VIPS_FOREIGN_KEEP_GAINMAP);
   // Destination: real file, or the stdout pipe (extension still from output).
   const char *dest = to_stdout ? "/dev/stdout" : output.c_str();
 
@@ -46,39 +52,37 @@ inline void save_image(VImage im, const std::string &output, int quality,
 
   if (ends_with(o, ".jpg") || ends_with(o, ".jpeg")) {
     // MozJPEG path; strip only for thumbnails, never for convert.
-    // keep=gainmap (not strip) so UHDR thumbnails stay UHDR: jpegsave
+    // keep=icc,gainmap (not strip) so UHDR thumbnails stay UHDR: jpegsave
     // forwards to uhdrsave when gainmap-data is present.
     VOption *opts = VImage::option()->set("Q", quality);
-    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
+    if (strip) opts->set("keep", kThumbnailKeep);
     im.jpegsave(dest, opts);
   } else if (ends_with(o, ".webp")) {
     VOption *opts = VImage::option()->set("Q", quality);
-    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
+    if (strip) opts->set("keep", kThumbnailKeep);
     im.webpsave(dest, opts);
   } else if (ends_with(o, ".avif")) {
     // AV1 in HEIF container (aom encode).
     VOption *opts = VImage::option()->set("Q", quality)->set("compression",
                                                               "av1");
-    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
+    if (strip) opts->set("keep", kThumbnailKeep);
     im.heifsave(dest, opts);
   } else if (ends_with(o, ".heic") || ends_with(o, ".heif")) {
     // HEVC in HEIF container (x265 encode).
     VOption *opts = VImage::option()->set("Q", quality)->set("compression",
                                                               "hevc");
-    if (strip) opts->set("keep", VIPS_FOREIGN_KEEP_GAINMAP);
+    if (strip) opts->set("keep", kThumbnailKeep);
     im.heifsave(dest, opts);
   } else if (ends_with(o, ".jxl")) {
-    // JXL saver takes no quality options here; keep gainmap when stripping
-    // so HDR gainmap metadata survives thumbnailing.
+    // JXL saver takes no quality options here; keep ICC + gainmap when
+    // stripping so colour and HDR gainmap metadata survive thumbnailing.
     if (strip)
-      im.jxlsave(dest,
-                 VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+      im.jxlsave(dest, VImage::option()->set("keep", kThumbnailKeep));
     else
       im.jxlsave(dest);
   } else if (ends_with(o, ".jp2")) {
     if (strip)
-      im.jp2ksave(dest,
-                  VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+      im.jp2ksave(dest, VImage::option()->set("keep", kThumbnailKeep));
     else
       im.jp2ksave(dest);
   } else {
@@ -90,9 +94,8 @@ inline void save_image(VImage im, const std::string &output, int quality,
       size_t n = 0;
       void *buf = nullptr;
       if (strip)
-        im.write_to_buffer(
-            output.c_str(), &buf, &n,
-            VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+        im.write_to_buffer(output.c_str(), &buf, &n,
+                           VImage::option()->set("keep", kThumbnailKeep));
       else
         im.write_to_buffer(output.c_str(), &buf, &n);
       if (fwrite(buf, 1, n, stdout) != n) {
@@ -101,8 +104,8 @@ inline void save_image(VImage im, const std::string &output, int quality,
       }
       free(buf);
     } else if (strip)
-      im.write_to_file(
-          dest, VImage::option()->set("keep", VIPS_FOREIGN_KEEP_GAINMAP));
+      im.write_to_file(dest,
+                       VImage::option()->set("keep", kThumbnailKeep));
     else
       im.write_to_file(dest);
   }
