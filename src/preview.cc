@@ -43,10 +43,18 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // No argv API: the only accepted argument is a help flag. Anything else
-  // is a usage error (avoids silently ignoring a stale argv-style call).
+  // No argv API: the only accepted arguments are help/version flags.
+  // Anything else is a usage error (avoids silently ignoring a stale
+  // argv-style call).
   if (argc > 1) {
     std::string a1 = lower(argv[1]);
+
+    // Version goes to stdout, bare number only (no "vips=" prefix).
+    if (a1 == "--version" || a1 == "-v" || a1 == "version") {
+      printf("%s\n", vips_version_string());
+      vips_shutdown();
+      return 0;
+    }
 
     // Help goes to stdout with the linked libvips version appended.
     if (a1 == "--help" || a1 == "-h" || a1 == "help") {
