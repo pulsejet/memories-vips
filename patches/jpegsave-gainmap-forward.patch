@@ -1,0 +1,23 @@
+From: local fix for HEIC HDR gainmap JPEG forwarding
+Subject: [TEMP] jpegsave: forward to uhdrsave when "gainmap" image is present
+
+Source: local (complements upstream PR libvips/libvips#5132 heifload part).
+Applies to: vips v8.18.7 (verified: patch -p1 --dry-run clean).
+Purpose: jpegsave currently forwards to uhdrsave only on "gainmap-data" or
+scRGB. HEIC heifload (patched) attaches only "gainmap" (VImage, no
+"gainmap-data"), so Samsung/Apple HEIC thumbs fall through to plain JPEG
+(SDR, no MPF). Also check "gainmap" so they encode as UltraHDR.
+TODO: Remove this patch + its block in build-camera-extras.sh once upstream
+libvips forwards jpegsave to uhdrsave on "gainmap" (or heifload provides
+"gainmap-data").
+---
+--- a/libvips/foreign/jpegsave.c
++++ b/libvips/foreign/jpegsave.c
+@@ -156,6 +156,7 @@
+ 
+ 	if (have_uhdr &&
+ 		(vips_image_get_typeof(save->ready, "gainmap-data") ||
++		 vips_image_get_typeof(save->ready, "gainmap") ||
+ 		 save->ready->Type == VIPS_INTERPRETATION_scRGB)) {
+ 		/* Pass on to uhdrsave.
+ 		 */

@@ -25,6 +25,7 @@ Regenerate with `python3 tests/gen_fixtures.py` (needs
 | `sample.hdr` | libvips `sample.hdr` | Real Radiance 141×980 | HDR input |
 | `ultra-hdr.jpg` | libvips `ultra-hdr.jpg` | Real UltraHDR gainmap photo 3840×2160 | `keep=icc,gainmap` thumbnail path |
 | `gainmap-odd.jpg` | libvips `gainmap-odd-dimensions.jpg` | Tiny gainmap edge case 129×97 | Odd-dimension gainmap |
+| `samsung-heic-gainmap.heic` | User-provided Samsung Galaxy S25 Ultra `20261014_100402.heic` (4000×3000 + 1000×750 aux `urn:com:samsung:photo:2024:aux:hdrgainmap`, HDRCapacityMax 2.3) | Real HEIC HDR gainmap photo 4000×3000 | HEIC `heifload` aux gainmap path (needs `patches/heifload-iso21496-gainmap.patch`; upstream PR #5132 closed unmerged) |
 
 License note: fixtures remain the property of their upstreams — check
 the source repos (libvips/LGPL, libheif/MIT, libjxl/testdata terms,

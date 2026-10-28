@@ -73,6 +73,7 @@ EXPECTED_DIMS = {
     "sample.hdr": (141, 980),
     "ultra-hdr.jpg": (3840, 2160),
     "gainmap-odd.jpg": (129, 97),
+    "samsung-heic-gainmap.heic": (4000, 3000),
 }
 
 # Saver-matrix + convert driver: a real photo (not a gradient).
@@ -477,6 +478,45 @@ class TestThumbnail(unittest.TestCase):
                     rc2, out2, err2 = run_json({"cmd": "info", "input": dst})
                     self.assertEqual(rc2, 0)
                     self.assertEqual(assert_info_json(self, out2, err2)["width"], 32)
+
+    def test_heic_gainmap_thumbnail_preserves_hdr(self):
+        # Samsung S25 Ultra HEIC stores HDR as SDR primary (4000x3000) plus
+        # a 1000x750 aux gainmap (urn:com:samsung:photo:2024:aux:hdrgainmap)
+        # with ISO 21496-1 hdrgm XML. heifload must attach it as "gainmap"
+        # (patches/heifload-iso21496-gainmap.patch, upstream PR #5132);
+        # otherwise the JPEG thumbnail is SDR-only (no MPF/gainmap).
+        # Requires a rebuilt binary with the patch; old binaries produce
+        # SDR thumbs (no MPF) and fail this test.
+        src = data_path("samsung-heic-gainmap.heic")
+        if not os.path.isfile(src):
+            self.skipTest("missing samsung-heic-gainmap.heic fixture")
+        with tempfile.TemporaryDirectory() as td:
+            dst = os.path.join(td, "samsung-thumb.jpg")
+            rc, _, err = run_json(
+                {
+                    "cmd": "thumbnail",
+                    "input": src,
+                    "output": dst,
+                    "width": 512,
+                    "height": 384,
+                }
+            )
+            self.assertEqual(rc, 0, f"samsung HEIC: {err[:300]}")
+            blob = read_bytes(dst)
+            # UltraHDR JPEG must contain an MPF trailer (gainmap JPEG).
+            self.assertIn(
+                b"MPF\x00",
+                blob,
+                "thumb lacks MPF: HEIC aux gainmap lost "
+                "(heifload drops Samsung hdrgainmap aux?)",
+            )
+            # Gainmap math: ISO 21496 APP2 marker or XMP hdrgm.
+            has_21496 = b"21496" in blob
+            has_hdrgm = b"hdrgm" in blob or b"GainMap" in blob
+            self.assertTrue(
+                has_21496 or has_hdrgm,
+                "thumb lacks gainmap metadata (21496/XMP hdrgm)",
+            )
 
     def test_default_geometry_is_512(self):
         with tempfile.TemporaryDirectory() as td:

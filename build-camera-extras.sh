@@ -128,6 +128,20 @@ $CURL "https://www.libraw.org/data/LibRaw-${VERSION_LIBRAW}.tar.gz" \
 rm -rf "${DEPS}/vips-static-camera" && mkdir -p "${DEPS}/vips-static-camera"
 $CURL "https://github.com/libvips/libvips/releases/download/v${VERSION_VIPS}/vips-${VERSION_VIPS}.tar.xz" \
   | tar xJC "${DEPS}/vips-static-camera" --strip-components=1
+# HEIC HDR gainmap (Samsung urn:com:samsung:photo:2024:aux:hdrgainmap, Apple):
+# upstream PR #5132 (closed, unmerged) extracts ISO 21496-1 aux + hdrgm XML
+# into gainmap-* metadata so thumbnails stay UHDR via keep=icc,gainmap,
+# plus local jpegsave forward on "gainmap" (heifload provides image only,
+# no "gainmap-data", so plain jpegsave would stay SDR).
+# Patches live in-tree (patches/), upstream tarball untouched.
+# TODO: Remove this block + patches/heifload-iso21496-gainmap.patch +
+# patches/jpegsave-gainmap-forward.patch once upstream libvips ships HEIC
+# HDR gainmap support natively (heifload + jpegsave forward).
+for _p in heifload-iso21496-gainmap.patch jpegsave-gainmap-forward.patch; do
+  if [ -f "${PACKAGE}/patches/${_p}" ]; then
+    (cd "${DEPS}/vips-static-camera" && patch -p1 < "${PACKAGE}/patches/${_p}")
+  fi
+done
 (cd "${DEPS}/vips-static-camera" && \
   sed -i'.bak' "/subdir('man')/{N;N;N;N;d;}" meson.build && \
   CFLAGS="${CFLAGS} -O3" CXXFLAGS="${CXXFLAGS} -O3" \
