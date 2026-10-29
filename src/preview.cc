@@ -5,6 +5,7 @@
 //   util.h     — shared string helpers.
 //   protocol.h — stdin JSON parsing/validation (Request).
 //   raw_fast.h — RAW embedded-JPEG fast path for thumbnails (LibRaw).
+//   version.h  — build counter (matches release tag suffix).
 //   image.h    — libvips ops (save by extension, stream to file/stdout).
 //   json.hpp   — vendored nlohmann/json (header-only, no new link deps).
 //
@@ -21,6 +22,7 @@
 #include "protocol.h"
 #include "usage.h"
 #include "util.h"
+#include "version.h"
 
 using nlohmann::json;
 
@@ -50,9 +52,10 @@ int main(int argc, char **argv) {
   if (argc > 1) {
     std::string a1 = lower(argv[1]);
 
-    // Version goes to stdout, bare number only (no "vips=" prefix).
+    // Version goes to stdout: upstream number plus build counter, matching
+    // the release tag minus leading v (tag v8.18.7-10 -> "8.18.7-10").
     if (a1 == "--version" || a1 == "-v" || a1 == "version") {
-      printf("%s\n", vips_version_string());
+      printf("%s-%s\n", vips_version_string(), kPreviewBuild);
       vips_shutdown();
       return 0;
     }

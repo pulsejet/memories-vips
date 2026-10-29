@@ -78,13 +78,16 @@ inline bool try_raw_thumbnail_fast(const std::string &input, int width,
     return false;
   }
   bool ok = false;
-  if (thumb->type == LIBRAW_IMAGE_JPEG && thumb->data_size > 0) {
+  if (thumb->type == LIBRAW_IMAGE_JPEG && thumb->data_size > 2) {
     // Copy JPEG bytes out before clearing LibRaw (it owns the buffer).
     std::vector<unsigned char> jpg(thumb->data_size);
     std::memcpy(jpg.data(), thumb->data, thumb->data_size);
     LibRaw::dcraw_clear_mem(thumb);
     raw.recycle();
     thumb = nullptr;
+    // Some bodies mislabel the thumb type; reject non-JPEG payloads here
+    // instead of failing deep inside the saver.
+    if (jpg[0] != 0xFF || jpg[1] != 0xD8) return false;
     try {
       // Same contract as file-path thumbnail(): shrink-on-load JPEG
       // decode + crop/resize, auto-rotate from preview EXIF.
@@ -99,7 +102,10 @@ inline bool try_raw_thumbnail_fast(const std::string &input, int width,
       // case) comes back smaller than requested. Treat as a miss so the
       // caller falls back to full decode.
       if (fast.width() >= width || fast.height() >= height) {
-        *out = fast;
+        // thumbnail_buffer() is lazy over jpg: render now while jpg is
+        // alive (else use-after-free decodes garbage), and throw corrupt
+        // payloads here so they fall back instead of failing at save.
+        *out = fast.copy_memory();
         ok = true;
       } else {
         ok = false;
