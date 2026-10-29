@@ -21,7 +21,7 @@ Commands — send exactly one JSON object on stdin:
   {"cmd":"convert","input":"INPUT","output":"OUTPUT","stdout":false,
    "quality":90}
 
-  info       print image metadata (width, height, bands, ...) as JSON on stderr
+  info       print image metadata (width, height, bands, ...) as JSON on fd 3
   thumbnail  resize/crop to WIDTH x HEIGHT (default 512 x 512), save to OUTPUT
   convert    re-encode INPUT to OUTPUT without resizing
 
@@ -32,9 +32,11 @@ Options:
 Streams:
   stdout carries file bytes only: empty when writing OUTPUT files,
     image bytes when "stdout" is true. Every successful command prints
-    one JSON info line on stderr (info reports INPUT; thumbnail/convert
-    report the OUTPUT image: width, height, bands, format,
-    interpretation, output) — no second info call needed.
+    one JSON info line on fd 3 (stderr fallback if fd 3 is closed;
+    open it with `vips-preview 3>info.json` — info reports INPUT;
+    thumbnail/convert report the OUTPUT image: width, height, bands,
+    format, interpretation, output) — no second info call needed.
+    stderr is human logs only (encoder chatter may appear there).
 
 Notes:
   Saver is picked from the OUTPUT filename extension
@@ -43,12 +45,12 @@ Notes:
   "stdout": true streams encoded bytes to stdout instead of writing OUTPUT
     (OUTPUT still selects the format, no file is written);
     thumbnails never upscale small inputs.
-  Errors are JSON on stderr: {"error":"..."}.
+  Errors are JSON on fd 3: {"error":"..."}.
 
 Examples:
-  echo '{"cmd":"info","input":"photo.jpg"}' | vips-preview
-  echo '{"cmd":"thumbnail","input":"photo.jpg","output":"thumb.webp","width":512,"height":512}' | vips-preview
-  echo '{"cmd":"convert","input":"photo.jpg","output":"photo.png"}' | vips-preview
+  echo '{"cmd":"info","input":"photo.jpg"}' | vips-preview 3>info.json
+  echo '{"cmd":"thumbnail","input":"photo.jpg","output":"thumb.webp","width":512,"height":512}' | vips-preview 3>info.json
+  echo '{"cmd":"convert","input":"photo.jpg","output":"photo.png"}' | vips-preview 3>info.json
 )USAGE";
 
 /// Print the help text to @p f (stdout for --help, stderr otherwise).

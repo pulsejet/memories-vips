@@ -29,11 +29,11 @@ static std::string read_all_stdin() {
                      std::istreambuf_iterator<char>());
 }
 
-/// Print a JSON {"error":...} line to stderr.
+/// Print a JSON {"error":...} line to fd 3 (stderr fallback if closed).
 static void print_error(const std::string &msg) {
   json err;
   err["error"] = msg;
-  fprintf(stderr, "%s\n", err.dump().c_str());
+  emit_json(err.dump());
 }
 
 int main(int argc, char **argv) {

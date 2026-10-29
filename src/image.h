@@ -6,9 +6,9 @@
 // (/dev/stdout has no extension to dispatch on).
 //
 // Contract: stdout = file bytes only (empty in file mode). One JSON info
-// line goes to stderr per command (input dims for info, output dims for
-// thumbnail/convert — free from the in-memory image); errors are
-// {"error":...} on stderr. Uses VImage::thumbnail() (shrink-on-load).
+// line goes to fd 3 (stderr fallback if closed) per command (input dims for
+// info, output dims for thumbnail/convert — free from the in-memory image);
+// errors are {"error":...} on fd 3. Uses VImage::thumbnail() (shrink-on-load).
 #pragma once
 
 #include <vips/vips8>
@@ -48,13 +48,13 @@ inline void save_image(VImage im, const std::string &output, int quality,
     if (strip) opts->set("keep", kThumbnailKeep);
     im.webpsave(dest, opts);
   } else if (ends_with(o, ".avif")) {
-    // AV1 in HEIF container (aom encode).
+    // AV1 in HEIF container (SVT-AV1 encode).
     VOption *opts = VImage::option()->set("Q", quality)->set("compression",
                                                               "av1");
     if (strip) opts->set("keep", kThumbnailKeep);
     im.heifsave(dest, opts);
   } else if (ends_with(o, ".heic") || ends_with(o, ".heif")) {
-    // HEVC in HEIF container (x265 encode).
+    // HEVC in HEIF container (encode disabled: no x265; heifsave errors).
     VOption *opts = VImage::option()->set("Q", quality)->set("compression",
                                                               "hevc");
     if (strip) opts->set("keep", kThumbnailKeep);
@@ -82,10 +82,8 @@ inline void save_image(VImage im, const std::string &output, int quality,
   }
 }
 
-/// One JSON info line on stderr (stdout = file bytes only).
-inline void print_result_info(const json &o) {
-  fprintf(stderr, "%s\n", o.dump().c_str());
-}
+/// One JSON info line on fd 3 (stdout = file bytes only).
+inline void print_result_info(const json &o) { emit_json(o.dump()); }
 
 /// Info JSON for @p im (dims free from memory, no re-read): @p output
 /// labels thumbnail/convert results, else filename is used (info).

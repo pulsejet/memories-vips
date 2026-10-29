@@ -92,14 +92,37 @@ def read_bytes(path: str) -> bytes:
 
 
 def run_raw(stdin: bytes, argv: list[str] | None = None):
-    """Run binary with raw stdin bytes; return (rc, stdout_bytes, stderr_text)."""
-    p = subprocess.run(
-        [VIPS_PREVIEW] + (argv or []),
-        input=stdin,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return p.returncode, p.stdout, p.stderr.decode("utf-8", "replace")
+    """Run binary with raw stdin bytes; return (rc, stdout_bytes, json_text).
+
+    Machine JSON travels on fd 3 (stderr is human logs only, e.g. SVT
+    chatter); the harness redirects fd 3 to a temp file and returns its
+    content as the third value (legacy name `err` at call sites).
+    """
+    with tempfile.NamedTemporaryFile(delete=False) as tf:
+        jp = tf.name
+    try:
+        cmd = [
+            "bash",
+            "-c",
+            'BIN="$1"; shift; JSON="$1"; shift; exec "$BIN" "$@" 3>"$JSON"',
+            "_",
+            VIPS_PREVIEW,
+            jp,
+        ] + (argv or [])
+        p = subprocess.run(
+            cmd,
+            input=stdin,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        with open(jp, "rb") as f:
+            jdata = f.read().decode("utf-8", "replace")
+        return p.returncode, p.stdout, jdata
+    finally:
+        try:
+            os.unlink(jp)
+        except OSError:
+            pass
 
 
 def run_json(req: dict, argv: list[str] | None = None):
@@ -108,12 +131,12 @@ def run_json(req: dict, argv: list[str] | None = None):
 
 
 def assert_error_json(test: unittest.TestCase, stderr: str, needle: str = ""):
-    test.assertTrue(stderr.strip(), "expected JSON error on stderr")
+    test.assertTrue(stderr.strip(), "expected JSON error on fd 3")
     try:
         obj = json.loads(stderr.strip().splitlines()[0])
     except json.JSONDecodeError:
-        test.fail(f"stderr is not JSON: {stderr[:300]!r}")
-    test.assertIn("error", obj, f"stderr JSON lacks 'error': {stderr[:300]!r}")
+        test.fail(f"fd 3 is not JSON: {stderr[:300]!r}")
+    test.assertIn("error", obj, f"fd 3 JSON lacks 'error': {stderr[:300]!r}")
     if needle:
         test.assertIn(needle, obj["error"], f"error {obj['error']!r} lacks {needle!r}")
 
@@ -126,14 +149,14 @@ def assert_info_json(
     height: int | None = None,
 ):
     """Success contract: stdout holds file bytes only (empty in file mode),
-    stderr holds exactly one JSON info line (no 'error' key)."""
+    fd 3 holds exactly one JSON info line (no 'error' key)."""
     test.assertEqual(stdout, b"", f"stdout must be file bytes only, got {stdout[:80]!r}")
-    test.assertTrue(stderr.strip(), "expected info JSON on stderr")
+    test.assertTrue(stderr.strip(), "expected info JSON on fd 3")
     try:
         obj = json.loads(stderr.strip().splitlines()[0])
     except json.JSONDecodeError:
-        test.fail(f"stderr is not JSON: {stderr[:300]!r}")
-    test.assertNotIn("error", obj, f"stderr is an error, not info: {obj!r}")
+        test.fail(f"fd 3 is not JSON: {stderr[:300]!r}")
+    test.assertNotIn("error", obj, f"fd 3 is an error, not info: {obj!r}")
     for key in ("width", "height", "bands", "format", "interpretation"):
         test.assertIn(key, obj, f"info JSON missing {key}: {obj!r}")
     if width is not None:
@@ -185,7 +208,14 @@ class TestHelpAndArgv(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(out, b"")
         assert_error_json(self, err, "no argv commands")
-        self.assertIn("usage:", err)
+        # usage help stays on stderr (human channel); check it directly.
+        p = subprocess.run(
+            [VIPS_PREVIEW, "foo"],
+            input=b"",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertIn("usage:", p.stderr.decode("utf-8", "replace"))
 
     def test_empty_stdin(self):
         rc, out, err = run_raw(b"")
@@ -368,7 +398,7 @@ class TestInfo(unittest.TestCase):
                 self.assertEqual(rc, 0, err[:200])
                 self.assertEqual(assert_info_json(self, out, err)["bands"], bands)
 
-    def test_info_stderr_clean_stdout_empty(self):
+    def test_info_json_clean_stdout_empty(self):
         rc, out, err = run_json({"cmd": "info", "input": data_path("rgba.png")})
         self.assertEqual(rc, 0)
         self.assertEqual(out, b"")
@@ -440,8 +470,8 @@ class TestThumbnail(unittest.TestCase):
                         (obj["width"], obj["height"]), expected, f"{name}/{crop}"
                     )
 
-    def test_thumbnail_reports_output_info_on_stderr(self):
-        # thumbnail success carries the OUTPUT dims on stderr (no 2nd info
+    def test_thumbnail_reports_output_info_on_fd3(self):
+        # thumbnail success carries the OUTPUT dims on fd 3 (no 2nd info
         # call needed); stdout stays empty in file mode.
         with tempfile.TemporaryDirectory() as td:
             dst = os.path.join(td, "rep.jpg")
@@ -623,14 +653,13 @@ class TestConvert(unittest.TestCase):
 class TestSaverDispatch(unittest.TestCase):
     """image.h save_image: one test per saver branch + generic fallback."""
 
-    # ext -> saver branch in save_image
+    # ext -> saver branch in save_image (HEVC encode removed: no x265,
+    # so .heic/.heif are covered by test_heic_encode_unsupported, not here)
     SAVERS = [
         ".jpg",
         ".jpeg",
         ".webp",
         ".avif",
-        ".heic",
-        ".heif",
         ".png",
         ".tiff",
         ".gif",
@@ -662,7 +691,7 @@ class TestSaverDispatch(unittest.TestCase):
     def test_thumbnail_saver_matrix(self):
         # Strip=true path (keep=icc,gainmap); thumbnail of a real photo.
         with tempfile.TemporaryDirectory() as td:
-            for ext in (".jpg", ".webp", ".avif", ".heic", ".png"):
+            for ext in (".jpg", ".webp", ".avif", ".png"):
                 with self.subTest(cmd="thumbnail", ext=ext):
                     dst = os.path.join(td, f"thumb{ext}")
                     rc, _, err = run_json(
@@ -692,9 +721,27 @@ class TestSaverDispatch(unittest.TestCase):
                     self.assertEqual(out, b"")
                     assert_error_json(self, err, "")
 
+    def test_heic_encode_unsupported(self):
+        # HEVC encode removed (no x265): .heic/.heif outputs must fail
+        # cleanly, while HEIC *decode* (info/thumbnail from .heic) still works
+        # via libde265 (see TestInfo/TestThumbnail All_inputs).
+        with tempfile.TemporaryDirectory() as td:
+            for ext in (".heic", ".heif"):
+                with self.subTest(ext=ext):
+                    rc, out, err = run_json(
+                        {
+                            "cmd": "convert",
+                            "input": data_path(DRIVER),
+                            "output": os.path.join(td, f"x{ext}"),
+                        }
+                    )
+                    self.assertEqual(rc, 1, ext)
+                    self.assertEqual(out, b"")
+                    assert_error_json(self, err, "")
+
 
 class TestStdoutStreaming(unittest.TestCase):
-    """image.h to_stdout: bytes on stdout, no file, info on stderr."""
+    """image.h to_stdout: bytes on stdout, no file, info on fd 3."""
 
     def test_stdout_matches_file_bytes(self):
         with tempfile.TemporaryDirectory() as td:
@@ -760,7 +807,7 @@ class TestStdoutStreaming(unittest.TestCase):
             self.assertEqual(rc, 0)
             assert_info_json(self, out, err, width=32, height=32)
 
-    def test_stdout_errors_stay_on_stderr(self):
+    def test_stdout_errors_on_fd3(self):
         rc, out, err = run_json(
             {
                 "cmd": "convert",

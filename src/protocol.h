@@ -3,7 +3,7 @@
 // Owns the wire format: field extraction with types/defaults, per-command
 // validation, and normalization (cmd/crop lowercased, "thumb" alias).
 // All failures throw std::runtime_error with a human message; main renders
-// them as {"error":...} on stderr so image-bytes stdout stays clean.
+// them as {"error":...} on fd 3 so image-bytes stdout stays clean.
 #pragma once
 
 #include <stdexcept>

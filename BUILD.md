@@ -61,19 +61,20 @@ the main OOM risk. Everything else stays at `-j$(nproc)`.
 mkdir -p /tmp/cli && tar xzC /tmp/cli -f vips-cli-linux-musl-x64-static.tar.gz
 readelf -d /tmp/cli/vips-preview | grep -c NEEDED   # must print 0 (fully static)
 python3 -c "open('/tmp/in.ppm','wb').write(b'P6\n64 64\n255\n'+bytes([200,30,30])*64*64)"
-echo '{"cmd":"info","input":"/tmp/in.ppm"}' | /tmp/cli/vips-preview 2>&1 >/dev/null
+echo '{"cmd":"info","input":"/tmp/in.ppm"}' | /tmp/cli/vips-preview 3>&1 1>/dev/null
 # {"bands":3,"filename":"/tmp/in.ppm","format":...,"height":64,"interpretation":...,"width":64}
-# (info JSON goes to stderr; stdout carries file bytes only, so it stays empty here)
+# (info JSON goes to fd 3; stdout carries file bytes only, so it stays empty here)
 echo '{"cmd":"convert","input":"/tmp/in.ppm","output":"/tmp/a.avif"}' \
-  | /tmp/cli/vips-preview                             # AV1 encode (aom)
-echo '{"cmd":"convert","input":"/tmp/in.ppm","output":"/tmp/a.heic"}' \
-  | /tmp/cli/vips-preview                             # HEVC encode (x265)
+  | /tmp/cli/vips-preview 3>&1 1>/dev/null             # AV1 encode (SVT-AV1)
+# HEVC encode removed (no x265): .heic output now errors; HEIC *decode* still works via libde265
 echo '{"cmd":"thumbnail","input":"/tmp/in.ppm","output":"t.jpg","stdout":true}' \
-  | /tmp/cli/vips-preview > /tmp/t.jpg                # saver from OUTPUT ext,
-                                                      # bytes streamed on stdout
+  | /tmp/cli/vips-preview 3>/tmp/info.json > /tmp/t.jpg; cat /tmp/info.json
+                                                       # saver from OUTPUT ext,
+                                                       # bytes on stdout, JSON on fd 3
 ```
 
-Both encodes must succeed — upstream binaries only manage AV1. The aarch64
+AVIF encode must succeed; HEIC encode must fail cleanly (no x265).
+Upstream binaries only manage AV1. The aarch64
 binary can be smoke-tested the same way on x86_64 once binfmt is installed
 (it executes transparently under QEMU).
 
@@ -84,8 +85,8 @@ binary can be smoke-tested the same way on x86_64 once binfmt is installed
   so `.pc` + CMake metadata survive for the static rebuilds. Upstream files
   are only ever read, never modified.
 - `build-camera-extras.sh` builds the delta static deps (dav1d,
-  libde265, x265, Imath, OpenEXR, libraw), rebuilds
-  `libheif` (HEVC+AV1 built in, no plugins) and `libvips` (static, no
+  libde265, SVT-AV1, Imath, OpenEXR, libraw), rebuilds
+  `libheif` (AV1 + HEVC-decode built in, no plugins) and `libvips` (static, no
   modules), links `src/preview.cc` with `-static`, gates on `readelf`
   showing no `NEEDED`, and packs the tarball with `versions.json`.
 
@@ -101,6 +102,6 @@ are ephemeral container storage.
   OOM killer during the Rust/librsvg phase — keep `CARGO_BUILD_JOBS` capped
   and check `docker logs` on the container (daemon-side logs stay complete
   even if a piped log file stalls).
-- `ld: cannot find -lgcc_s`: stale `x265.pc` — fixed in-tree by stripping
-  the flag after install; if it recurs, another dep's `.pc` is injecting it
+- `ld: cannot find -lgcc_s`: stale `x265.pc` from older builds — removed
+  with x265; if it recurs, another dep's `.pc` is injecting it
   (`grep -r lgcc_s /target/lib/pkgconfig` inside the container).

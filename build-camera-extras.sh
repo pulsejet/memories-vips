@@ -25,10 +25,10 @@ else
 fi
 
 : "${PLATFORM:?PLATFORM must be set (linux-musl-x64, linux-musl-arm64)}"
-: "${VERSION_DAV1D:?}" "${VERSION_LIBDE265:?}" "${VERSION_X265:?}"
+: "${VERSION_DAV1D:?}" "${VERSION_LIBDE265:?}" "${VERSION_SVT_AV1:?}"
 : "${VERSION_IMATH:?}" "${VERSION_OPENEXR:?}"
 : "${VERSION_LIBRAW:?}"
-: "${HEIF_WITH_X265:?}" "${HEIF_WITH_LIBDE265:?}" "${HEIF_WITH_AOM:?}" "${HEIF_WITH_DAV1D:?}"
+: "${HEIF_WITH_X265:?}" "${HEIF_WITH_LIBDE265:?}" "${HEIF_WITH_AOM_ENCODER:?}" "${HEIF_WITH_AOM_DECODER:?}" "${HEIF_WITH_DAV1D:?}" "${HEIF_WITH_SVTENC:?}"
 
 # --- env (mirror upstream build/posix.sh; tolerate already-set values) ---
 LINUX=true
@@ -85,26 +85,21 @@ $CURL "https://code.videolan.org/videolan/dav1d/-/archive/${VERSION_DAV1D}/dav1d
 cmake_dep libde265 "https://github.com/strukturag/libde265/archive/v${VERSION_LIBDE265}.tar.gz" \
   . MinSizeRel -DENABLE_SDL=OFF -DENABLE_DECODER=OFF -DENABLE_ENCODER=OFF
 
-# x265 (HEVC encode for libheif; sources under source/; bitbucket is canonical,
-# ftp.videolan.org is unreachable from some networks)
-cmake_dep x265 "https://bitbucket.org/multicoreware/x265_git/downloads/x265_${VERSION_X265}.tar.gz" \
-  source MinSizeRel -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DENABLE_PIC=ON \
-  -DENABLE_CLI=OFF -DENABLE_TESTS=OFF
-# x265.pc seeds Libs.private from CMAKE_CXX_IMPLICIT_LINK_LIBRARIES incl. -lgcc_s,
-# which musl lacks (only libgcc.a); strip it or every -static consumer fails in ld.
-sed -i 's/ -lgcc_s//g' "${TARGET}/lib/pkgconfig/x265.pc"
-grep -q "lgcc_s" "${TARGET}/lib/pkgconfig/x265.pc" \
-  && { echo "x265.pc still references lgcc_s" >&2; exit 1; } || true
+# SVT-AV1 (AV1 encode for libheif; GitLab is canonical; LOG_QUIET keeps
+# stderr clean for the JSON-line protocol — SVT logs to stderr by default)
+cmake_dep svt-av1 "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v${VERSION_SVT_AV1}/SVT-AV1-v${VERSION_SVT_AV1}.tar.gz" \
+  . MinSizeRel -DBUILD_APPS=OFF -DBUILD_TESTING=OFF -DLOG_QUIET=ON
 
-# libheif rebuilt with HEVC + AV1 built-in, no plugins, no dlopen
-# (svt-av1/rav1e stay OFF: aom already covers AV1 encode)
+# libheif rebuilt with AV1 (SVT-AV1 encode + dav1d decode) + HEVC decode only,
+# built-in, no plugins, no dlopen (HEVC encode/X265 and AOM are OFF)
 CFLAGS="${CFLAGS} -O3" CXXFLAGS="${CXXFLAGS} -O3" \
 cmake_dep heif "https://github.com/strukturag/libheif/releases/download/v${VERSION_HEIF}/libheif-${VERSION_HEIF}.tar.gz" \
   . Release -DBUILD_DOCUMENTATION=0 -DBUILD_TESTING=0 -DENABLE_PLUGIN_LOADING=0 \
   -DWITH_EXAMPLES=0 -DWITH_GDK_PIXBUF=0 \
   -DWITH_X265="${HEIF_WITH_X265}" -DWITH_LIBDE265="${HEIF_WITH_LIBDE265}" \
-  -DWITH_AOM="${HEIF_WITH_AOM}" -DWITH_DAV1D="${HEIF_WITH_DAV1D}" \
-  -DWITH_RAV1E=0 -DWITH_SvtEnc=0
+  -DWITH_AOM_ENCODER="${HEIF_WITH_AOM_ENCODER}" -DWITH_AOM_DECODER="${HEIF_WITH_AOM_DECODER}" \
+  -DWITH_DAV1D="${HEIF_WITH_DAV1D}" -DWITH_SvtEnc="${HEIF_WITH_SVTENC}" \
+  -DWITH_RAV1E=0
 
 # Imath + OpenEXR
 cmake_dep imath "https://github.com/AcademySoftwareFoundation/Imath/archive/v${VERSION_IMATH}.tar.gz" \
