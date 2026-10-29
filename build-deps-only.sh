@@ -4,9 +4,9 @@ set -euo pipefail
 #
 # Why: posix.sh ends with `rm -rf $TARGET/lib/{pkgconfig,cmake,...}` + copydeps
 # tarball. That deletion breaks every later cmake/meson find that relies on
-# .pc files or *-config.cmake (e.g. libheif's FindAOM degrades to "headers but
-# AOM_LIBRARY=<not found>", libjxl's FindHWY fails hard). Our static extras
-# need that metadata, and we don't ship the shared fallback tarball anyway.
+# .pc files or *Config.cmake (e.g. libheif's dav1d/SVT-AV1 detection,
+# OpenEXR's Imath config). Our static extras need that metadata, and we don't
+# ship the shared fallback tarball anyway.
 #
 # How: operate on a COPY (upstream files unmodified), cut before `^# Cleanup$`.
 SRC="${1:-/packaging/build/posix.sh}"
@@ -16,6 +16,12 @@ awk '/^# Cleanup$/{exit} {print}' "$SRC" > "$TMP"
 # HTTP errors instead of piping error pages into tar/patch, and retry harder
 # (transient 429s from github after many fetches kill `patch` otherwise).
 sed -i 's|--retry 3 --retry-max-time 30|--retry 5 --retry-max-time 60 --fail --retry-all-errors|' "$TMP"
+# Perf over size (COPY only): upstream defaults to -Os/MinSizeRel/OPT_LEVEL=z.
+# This project ships a 26MB static binary where decode/resize dominate, so
+# build everything -O3/Release. Explicit per-dep -O3 lines stay harmless.
+sed -i 's/-Os -fPIC/-O3 -fPIC/' "$TMP"
+sed -i 's/MinSizeRel/Release/g' "$TMP"
+sed -i 's/OPT_LEVEL=z/OPT_LEVEL=3/' "$TMP"
 # Sanity: must keep the shared-vips install, must drop the tarball step.
 grep -q "meson install -C _build --tag runtime,devel" "$TMP" \
   || { echo "ERROR: cut dropped the vips install" >&2; exit 1; }

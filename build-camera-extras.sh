@@ -37,7 +37,7 @@ TARGET="${TARGET:-/target}"
 PACKAGE="${PACKAGE:-/packaging}"
 ROOT="${ROOT:-/root}"
 CHOST="${CHOST:-$(gcc -dumpmachine 2>/dev/null || echo "")}"
-FLAGS="${FLAGS:--Os -fPIC}"
+FLAGS="${FLAGS:--O3 -fPIC}"
 export TARGET_SYSROOT="${TARGET_SYSROOT:-${TARGET}}"
 export PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR:-${TARGET}/lib/pkgconfig}"
 export PATH="${PATH}:${TARGET}/bin"
@@ -83,12 +83,12 @@ $CURL "https://code.videolan.org/videolan/dav1d/-/archive/${VERSION_DAV1D}/dav1d
 # libde265 (HEVC decode for libheif; GitHub archive has no ./configure, and the
 # Rocky image lacks libtool, so CMake library-only instead of autotools)
 cmake_dep libde265 "https://github.com/strukturag/libde265/archive/v${VERSION_LIBDE265}.tar.gz" \
-  . MinSizeRel -DENABLE_SDL=OFF -DENABLE_DECODER=OFF -DENABLE_ENCODER=OFF
+  . Release -DENABLE_SDL=OFF -DENABLE_DECODER=OFF -DENABLE_ENCODER=OFF
 
 # SVT-AV1 (AV1 encode for libheif; GitLab is canonical; LOG_QUIET keeps
 # stderr clean for the JSON-line protocol — SVT logs to stderr by default)
 cmake_dep svt-av1 "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/v${VERSION_SVT_AV1}/SVT-AV1-v${VERSION_SVT_AV1}.tar.gz" \
-  . MinSizeRel -DBUILD_APPS=OFF -DBUILD_TESTING=OFF -DLOG_QUIET=ON
+  . Release -DBUILD_APPS=OFF -DBUILD_TESTING=OFF -DLOG_QUIET=ON
 
 # libheif rebuilt with AV1 (SVT-AV1 encode + dav1d decode) + HEVC decode only,
 # built-in, no plugins, no dlopen (HEVC encode/X265 and AOM are OFF)
@@ -103,9 +103,9 @@ cmake_dep heif "https://github.com/strukturag/libheif/releases/download/v${VERSI
 
 # Imath + OpenEXR
 cmake_dep imath "https://github.com/AcademySoftwareFoundation/Imath/archive/v${VERSION_IMATH}.tar.gz" \
-  . MinSizeRel -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF
+  . Release -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF
 cmake_dep openexr "https://github.com/AcademySoftwareFoundation/openexr/archive/v${VERSION_OPENEXR}.tar.gz" \
-  . MinSizeRel -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF \
+  . Release -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF \
   -DOPENEXR_INSTALL_EXAMPLES=OFF
 
 # libraw (camera RAW via dcrawload; OpenMP ON for multi-thread demosaic;
@@ -164,7 +164,7 @@ CLI_SRC="${PACKAGE}/src/preview.cc"
 # shellcheck disable=SC2086
 CXX_BIN="${CXX:-c++}"
 # shellcheck disable=SC2086
-"$CXX_BIN" -fopenmp "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
+"$CXX_BIN" -O3 -fopenmp "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
   $($PKG_CONFIG_BIN --cflags vips-cpp) $($PKG_CONFIG_BIN --cflags libraw 2>/dev/null || true) \
   -Wl,--start-group $($PKG_CONFIG_BIN --libs --static vips-cpp) $($PKG_CONFIG_BIN --libs --static libraw 2>/dev/null || echo "-lraw -lraw_r") -Wl,--end-group -lz \
   -static -static-libstdc++ -static-libgcc
