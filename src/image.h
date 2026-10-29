@@ -19,6 +19,7 @@
 #include <string>
 
 #include "protocol.h"
+#include "raw_fast.h"
 #include "util.h"
 
 using namespace vips;
@@ -123,6 +124,20 @@ inline int run_thumbnail(const Request &r) {
     interesting = VIPS_INTERESTING_LOW;
   else if (r.crop == "high")
     interesting = VIPS_INTERESTING_HIGH;
+
+  // Fast path: embedded JPEG preview (full demosaic is 7-30s). Falls
+  // back to full decode when there is no usable preview (tiny thumbs,
+  // bitmap, non-RAW). Slow path below keeps the exact same contract.
+  {
+    VImage fast;
+    VipsInteresting fast_crop =
+        (r.crop == "none") ? VIPS_INTERESTING_NONE : interesting;
+    if (try_raw_thumbnail_fast(r.input, r.width, r.height, fast_crop, &fast)) {
+      save_image(fast, r.output, r.quality, true, r.to_stdout);
+      print_result_info(image_info_json(fast, r.input, r.output));
+      return 0;
+    }
+  }
 
   // "none" fits aspect; otherwise exact w x h crop.
   VImage im = (r.crop == "none")

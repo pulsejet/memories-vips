@@ -4,6 +4,7 @@
 //   usage.h    — help text (raw string, one source of protocol docs).
 //   util.h     — shared string helpers.
 //   protocol.h — stdin JSON parsing/validation (Request).
+//   raw_fast.h — RAW embedded-JPEG fast path for thumbnails (LibRaw).
 //   image.h    — libvips ops (save by extension, stream to file/stdout).
 //   json.hpp   — vendored nlohmann/json (header-only, no new link deps).
 //

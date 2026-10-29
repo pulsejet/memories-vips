@@ -108,14 +108,17 @@ cmake_dep openexr "https://github.com/AcademySoftwareFoundation/openexr/archive/
   . MinSizeRel -DOPENEXR_BUILD_TOOLS=OFF -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF \
   -DOPENEXR_INSTALL_EXAMPLES=OFF
 
-# libraw (camera RAW via dcrawload; --disable-openmp avoids static libgomp on musl;
-# libraw.org tarball ships ./configure, GitHub archive has only configure.ac)
+# libraw (camera RAW via dcrawload; OpenMP ON for multi-thread demosaic;
+# musl static libgomp works: `gcc -fopenmp -static` links libgomp.a cleanly
+# on Alpine 3.20, verified in-container. libraw.org tarball ships
+# ./configure, GitHub archive has only configure.ac)
 rm -rf "${DEPS}/libraw" && mkdir -p "${DEPS}/libraw"
 $CURL "https://www.libraw.org/data/LibRaw-${VERSION_LIBRAW}.tar.gz" \
   | tar xzC "${DEPS}/libraw" --strip-components=1
 (cd "${DEPS}/libraw" && \
+  CFLAGS="${CFLAGS} -fopenmp -O3" CXXFLAGS="${CXXFLAGS} -fopenmp -O3" \
   ./configure --host="${CHOST}" --prefix="${TARGET}" --enable-static --disable-shared \
-    --disable-dependency-tracking --disable-examples --disable-jasper --disable-openmp && \
+    --disable-dependency-tracking --disable-examples --disable-jasper --enable-openmp && \
   make install-strip)
 
 # libvips STATIC with camera loaders, modules disabled (no dlopen).
@@ -161,9 +164,9 @@ CLI_SRC="${PACKAGE}/src/preview.cc"
 # shellcheck disable=SC2086
 CXX_BIN="${CXX:-c++}"
 # shellcheck disable=SC2086
-"$CXX_BIN" "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
-  $($PKG_CONFIG_BIN --cflags vips-cpp) \
-  -Wl,--start-group $($PKG_CONFIG_BIN --libs --static vips-cpp) -Wl,--end-group -lz \
+"$CXX_BIN" -fopenmp "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
+  $($PKG_CONFIG_BIN --cflags vips-cpp) $($PKG_CONFIG_BIN --cflags libraw 2>/dev/null || true) \
+  -Wl,--start-group $($PKG_CONFIG_BIN --libs --static vips-cpp) $($PKG_CONFIG_BIN --libs --static libraw 2>/dev/null || echo "-lraw -lraw_r") -Wl,--end-group -lz \
   -static -static-libstdc++ -static-libgcc
 strip "${TARGET}/bin/vips-preview" 2>/dev/null || true
 
