@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vips-static editor parity — WebGL vs VIPS</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      .topnav {
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+      .cases {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px 20px;
+        max-width: 1200px;
+      }
+      .case {
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 12px;
+        background: #1a1a1a;
+      }
+      .case h2 {
+        font-size: 15px;
+        margin: 0 0 4px;
+      }
+      .case pre {
+        background: #000;
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0 0 8px;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 760px) {
+        .pair {
+          grid-template-columns: 1fr;
+        }
+      }
+      .pair figure {
+        margin: 0;
+      }
+      .pair figcaption {
+        font-size: 12px;
+        color: #aaa;
+        margin-bottom: 4px;
+      }
+      .pair canvas,
+      .pair img {
+        width: 100%;
+        display: block;
+        background: #000;
+        border: 1px solid #333;
+      }
+      .error {
+        color: #f88;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="topnav"><a href="./index.html">&larr; editor demo</a></div>
+      <h1>WebGL &harr; VIPS parity</h1>
+      <p>
+        Every row applies the same edit list twice: live WebGL on the left (this page, EditPipeline
+        over <code>parity/src.jpg</code>), pre-rendered VIPS on the right (built binary,
+        <code>convert</code> over the same pixels). Rows come from the committed
+        <code>parity-cases.json</code> — cards and canvases are built at runtime by
+        <code>parity.ts</code>; the VIPS JPEGs are rendered by <code>npm run parity</code>.
+      </p>
+      <p id="status">Loading source&hellip;</p>
+    </header>
+    <main class="cases" id="cases"></main>
+    <script type="module" src="./parity.ts"></script>
+  </body>
+</html>

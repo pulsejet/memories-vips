@@ -9,7 +9,8 @@
     "exactOptionalPropertyTypes": true,
     "declaration": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   },
   "include": ["src", "demo", "tests"]
 }

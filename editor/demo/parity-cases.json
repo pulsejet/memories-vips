@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "cases": [
+    { "id": "baseline", "title": "no edits (identity)", "edits": [] },
+    {
+      "id": "brightness",
+      "title": "brightnessContrast (brightness only)",
+      "edits": [{ "edit": "brightnessContrast", "brightness": 0.3, "contrast": 0 }]
+    },
+    {
+      "id": "contrast",
+      "title": "brightnessContrast (contrast only)",
+      "edits": [{ "edit": "brightnessContrast", "brightness": 0, "contrast": 0.5 }]
+    },
+    {
+      "id": "exposure",
+      "title": "exposure",
+      "edits": [{ "edit": "exposure", "stops": 1.0 }]
+    },
+    {
+      "id": "hue",
+      "title": "hueSaturation (hue only)",
+      "edits": [{ "edit": "hueSaturation", "hue": 0.5, "saturation": 0 }]
+    },
+    {
+      "id": "saturation",
+      "title": "hueSaturation (saturation only)",
+      "edits": [{ "edit": "hueSaturation", "hue": 0, "saturation": 0.7 }]
+    },
+    {
+      "id": "sepia",
+      "title": "sepia",
+      "edits": [{ "edit": "sepia", "amount": 0.7 }]
+    },
+    {
+      "id": "vibrance",
+      "title": "vibrance",
+      "edits": [{ "edit": "vibrance", "amount": 0.6 }]
+    },
+    {
+      "id": "blur",
+      "title": "blur",
+      "edits": [{ "edit": "blur", "radius": 6 }]
+    },
+    {
+      "id": "sharpen",
+      "title": "sharpen",
+      "edits": [{ "edit": "sharpen", "radius": 3, "amount": 1.0 }]
+    },
+    {
+      "id": "vignette",
+      "title": "vignette",
+      "edits": [{ "edit": "vignette", "size": 0.55, "amount": 0.6 }]
+    },
+    { "id": "invert", "title": "invert", "edits": [{ "edit": "invert" }] },
+    { "id": "grayscale", "title": "grayscale", "edits": [{ "edit": "grayscale" }] }
+  ]
+}

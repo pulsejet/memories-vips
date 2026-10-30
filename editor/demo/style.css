@@ -17,6 +17,10 @@ header p {
   color: #aaa;
   font-size: 13px;
 }
+.topnav {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
 main {
   display: flex;
   gap: 16px;

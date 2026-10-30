@@ -12,3 +12,4 @@ __pycache__/
 build-full.log
 /editor/node_modules/
 /editor/dist-demo/
+/editor/demo/parity/

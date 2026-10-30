@@ -16,6 +16,13 @@ editor/
                   + state serialization (state.ts); mirrors src/transforms/*.h
     index.ts      public surface (per-transform types import from their file)
   demo/ tests/   playground (schema-driven) · vitest
+  demo/parity.html + demo/parity.ts + demo/parity-cases.json
+                  committed WebGL↔VIPS side-by-side page: static shell, runtime
+                  cards + live WebGL, cases as typed JSON (`satisfies` import)
+  demo/parity/    git-ignored VIPS JPEGs rendered by generate-parity.py
+  demo/generate-parity.py  dumb renderer: reads parity-cases.json, runs a
+                  built vips-preview (`npm run parity`)
+              UltraHDR source; VIPS side pre-rendered, WebGL side live.
 ```
 
 Adding a transform: write its file, add one line to the registry — pipeline,
@@ -25,9 +32,10 @@ validation, serialization, and demo pick it up.
 cd editor
 npm install
 npm run dev        # demo playground
+npm run parity     # render VIPS-side parity JPEGs via a built vips-preview
 npm run typecheck && npm test   # tsc + vitest
 npm run format     # prettier --write
-npm run build      # typecheck + demo bundle
+npm run build      # typecheck + demo bundle (index.html + parity.html)
 ```
 
 ## Wire format

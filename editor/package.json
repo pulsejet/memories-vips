@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "tsc --noEmit && vite build --config vite.config.ts",
+    "parity": "python3 demo/generate-parity.py",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
