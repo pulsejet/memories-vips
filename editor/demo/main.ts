@@ -33,6 +33,13 @@ function showImage(source: TexImageSource, label: string): void {
 function refresh() {
   if (!pipeline) return;
   pipeline.setEdits(state.edits);
+  // External owner sizes the backing store; re-present when it changed
+  // (setting width/height clears, so render again after resizing).
+  if (canvas.width !== pipeline.width || canvas.height !== pipeline.height) {
+    canvas.width = pipeline.width;
+    canvas.height = pipeline.height;
+    pipeline.render();
+  }
   const normalized = state.edits.map(normalizeEdit);
   outEl.textContent = JSON.stringify({ version: 1, edits: normalized }, null, 2);
   metaEl.textContent = `${pipeline.width}x${pipeline.height}, ${state.edits.length} edit(s)`;

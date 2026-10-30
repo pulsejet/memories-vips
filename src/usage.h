@@ -28,7 +28,7 @@ Commands — send exactly one JSON object on stdin:
   convert    apply "edits" (below) to INPUT at full resolution, re-encode
     to OUTPUT
 
-  Edits (thumbnail + convert): ordered array of pixel edits — the same list
+  Edits (thumbnail + convert): ordered array of pixel + geometric edits — the same list
   the editor canvas previews. Missing numerics default to no-change unless
   noted. Edits run after thumbnail resize (blur/sharpen radii are output
   pixels) and never drop ICC/gainmap: UHDR outputs stay UHDR.
@@ -43,6 +43,8 @@ Commands — send exactly one JSON object on stdin:
     {"edit":"blur","radius":0}                                 gaussian px, 0..100, 0 skips
     {"edit":"sharpen","radius":2,"amount":0.5}                 radius 0..50, amount 0..5
     {"edit":"vignette","size":0.5,"amount":0.5}                0..1 each (edge darkening)
+    {"edit":"crop","x":0,"y":0,"width":1,"height":1}           fractions 0..1 (default full frame)
+    {"edit":"rotate","angle":0}                                clockwise degrees, -180..180
 
   Example:
     echo '{"cmd":"convert","input":"in.jpg","output":"out.jpg",

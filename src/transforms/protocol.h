@@ -14,10 +14,12 @@
 #include "json.hpp"
 #include "blur.h"
 #include "brightness_contrast.h"
+#include "crop.h"
 #include "exposure.h"
 #include "grayscale.h"
 #include "hue_saturation.h"
 #include "invert.h"
+#include "rotate.h"
 #include "sepia.h"
 #include "sharpen.h"
 #include "transform.h"
@@ -92,6 +94,22 @@ inline std::vector<TransformPtr> parse_transforms(const json &j) {
       out.push_back(std::make_unique<Invert>());
     } else if (name == "grayscale") {
       out.push_back(std::make_unique<Grayscale>());
+    } else if (name == "crop") {
+      double x = transform_param(o, idx, "x", 0.0, 0.0, 1.0);
+      double y = transform_param(o, idx, "y", 0.0, 0.0, 1.0);
+      double w = transform_param(o, idx, "width", 1.0, 0.0, 1.0);
+      double h = transform_param(o, idx, "height", 1.0, 0.0, 1.0);
+      if (!(w > 0.0) || !(h > 0.0))
+        throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
+                                 "].width/height must be > 0");
+      const double eps = 1e-9;
+      if (x + w > 1.0 + eps || y + h > 1.0 + eps)
+        throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
+                                 "]: crop region x+width/y+height exceeds 1");
+      out.push_back(std::make_unique<Crop>(x, y, w, h));
+    } else if (name == "rotate") {
+      out.push_back(std::make_unique<Rotate>(
+          transform_param(o, idx, "angle", 0.0, -180.0, 180.0)));
     } else {
       throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
                                "]: unknown edit \"" + name + "\"");

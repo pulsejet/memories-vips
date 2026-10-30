@@ -53,6 +53,21 @@
       "edits": [{ "edit": "vignette", "size": 0.55, "amount": 0.6 }]
     },
     { "id": "invert", "title": "invert", "edits": [{ "edit": "invert" }] },
-    { "id": "grayscale", "title": "grayscale", "edits": [{ "edit": "grayscale" }] }
+    { "id": "grayscale", "title": "grayscale", "edits": [{ "edit": "grayscale" }] },
+    {
+      "id": "crop",
+      "title": "crop (center 60%)",
+      "edits": [{ "edit": "crop", "x": 0.2, "y": 0.2, "width": 0.6, "height": 0.6 }]
+    },
+    {
+      "id": "rotate90",
+      "title": "rotate (90 exact)",
+      "edits": [{ "edit": "rotate", "angle": 90 }]
+    },
+    {
+      "id": "rotate30",
+      "title": "rotate (30 arbitrary)",
+      "edits": [{ "edit": "rotate", "angle": 30 }]
+    }
   ]
 }

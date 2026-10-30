@@ -10,6 +10,14 @@ describe('validation', () => {
     expect(validateEdit({ edit: 'sepia', amount: -0.1 })).not.toEqual([]);
     expect(validateEdit({ edit: 'vignette', size: 2 })).not.toEqual([]);
     expect(validateEdit({ edit: 'sharpen', amount: 9 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'crop', x: 2 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'crop', width: 0 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'crop', x: 0.8, width: 0.5 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'rotate', angle: 200 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'crop', x: 0.1, y: 0.1, width: 0.5, height: 0.5 })).toEqual([]);
+    expect(validateEdit({ edit: 'rotate', angle: 45 })).toEqual([]);
+    expect(validateEdit({ edit: 'rotate' })).toEqual([]);
+    expect(validateEdit({ edit: 'crop' })).toEqual([]);
     expect(validateEdit({ edit: 'invert' })).toEqual([]);
     expect(validateEdit({ edit: 'nope' } as never)).not.toEqual([]);
     expect(validateState({ version: 1, edits: [{ edit: 'blur', radius: 3 }] })).toEqual([]);
@@ -37,10 +45,11 @@ describe('validation', () => {
 });
 
 describe('registry', () => {
-  it('covers all ten edits with a full Transform signature', () => {
+  it('covers all twelve edits with a full Transform signature', () => {
     expect(Object.keys(TRANSFORMS).sort()).toEqual(
       [
         'brightnessContrast',
+        'crop',
         'exposure',
         'hueSaturation',
         'sepia',
@@ -50,6 +59,7 @@ describe('registry', () => {
         'vignette',
         'invert',
         'grayscale',
+        'rotate',
       ].sort(),
     );
     for (const t of Object.values(TRANSFORMS)) {

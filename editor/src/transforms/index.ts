@@ -7,10 +7,12 @@ import type { Edit, EditName } from '../types.js';
 import { lookup, type Transform } from './transform.js';
 import { BlurTransform } from './blur.js';
 import { BrightnessContrastTransform } from './brightnessContrast.js';
+import { CropTransform } from './crop.js';
 import { ExposureTransform } from './exposure.js';
 import { GrayscaleTransform } from './grayscale.js';
 import { HueSaturationTransform } from './hueSaturation.js';
 import { InvertTransform } from './invert.js';
+import { RotateTransform } from './rotate.js';
 import { SepiaTransform } from './sepia.js';
 import { SharpenTransform } from './sharpen.js';
 import { VibranceTransform } from './vibrance.js';
@@ -27,6 +29,8 @@ export const TRANSFORMS: Record<EditName, Transform<string, object>> = {
   vignette: new VignetteTransform(),
   invert: new InvertTransform(),
   grayscale: new GrayscaleTransform(),
+  crop: new CropTransform(),
+  rotate: new RotateTransform(),
 };
 
 /** Human-readable problems; empty means the edit is VIPS-appliable. */

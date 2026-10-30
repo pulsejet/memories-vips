@@ -10,6 +10,9 @@ import type { EditName } from '../types.js';
 export interface Target {
   tex: WebGLTexture;
   fb: WebGLFramebuffer;
+  /** Pixel size of the target (targets are reallocated on geometry change). */
+  w: number;
+  h: number;
 }
 
 export interface ExtraTex {
@@ -22,8 +25,14 @@ export type UniformSetter = (gl: WebGLRenderingContext, prog: WebGLProgram) => v
 
 /** What a transform may do: single passes, blits, separable gaussian. */
 export interface RenderContext {
+  /** Input (source) size for the current edit. */
   width: number;
   height: number;
+  /** Output size for the current edit (differs for crop/rotate). */
+  outWidth: number;
+  outHeight: number;
+  /** Fragment-shader highp support (rotate picks precision accordingly). */
+  highp: boolean;
   extra: Target;
   pass(
     frag: string,
@@ -58,6 +67,12 @@ export interface Transform<Name extends string, P extends object> {
   normalize(params: P): Required<P>;
   /** Render one edit reading `from`, writing `to`; returns result target. */
   apply(ctx: RenderContext, from: Target, to: Target, params: Required<P>): Target;
+  /**
+   * Output size for the given input size (pixel ops omit this: identity).
+   * Geometric edits (crop/rotate) implement it with the exact VIPS formula
+   * so the pipeline can pre-size `to`; `apply` must fill exactly that.
+   */
+  outputDims?(inW: number, inH: number, params: Required<P>): { w: number; h: number };
 }
 
 /** Number in [lo,hi], finite. Shared range check for validate(). */

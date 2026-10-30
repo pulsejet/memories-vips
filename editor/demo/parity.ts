@@ -102,8 +102,13 @@ function main(): void {
         pipe.setEdits(c.edits);
         const view = canvases.get(c.id);
         if (!view) throw new Error(`missing canvas gl-${c.id}`);
+        // Both canvases are externally owned: size them to the output,
+        // then re-present the GL canvas into its fresh backing store.
         view.width = pipe.width;
         view.height = pipe.height;
+        hidden.width = pipe.width;
+        hidden.height = pipe.height;
+        pipe.render();
         const g = view.getContext('2d');
         if (!g) throw new Error('2d context unavailable');
         g.drawImage(hidden, 0, 0);

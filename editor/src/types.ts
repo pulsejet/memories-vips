@@ -7,10 +7,12 @@
 // (src/transforms/); this file only forms the union.
 import type { BlurEdit } from './transforms/blur.js';
 import type { BrightnessContrastEdit } from './transforms/brightnessContrast.js';
+import type { CropEdit } from './transforms/crop.js';
 import type { ExposureEdit } from './transforms/exposure.js';
 import type { GrayscaleEdit } from './transforms/grayscale.js';
 import type { HueSaturationEdit } from './transforms/hueSaturation.js';
 import type { InvertEdit } from './transforms/invert.js';
+import type { RotateEdit } from './transforms/rotate.js';
 import type { SepiaEdit } from './transforms/sepia.js';
 import type { SharpenEdit } from './transforms/sharpen.js';
 import type { VibranceEdit } from './transforms/vibrance.js';
@@ -26,7 +28,9 @@ export type EditName =
   | 'sharpen'
   | 'vignette'
   | 'invert'
-  | 'grayscale';
+  | 'grayscale'
+  | 'crop'
+  | 'rotate';
 
 export type Edit =
   | BrightnessContrastEdit
@@ -38,7 +42,9 @@ export type Edit =
   | SharpenEdit
   | VignetteEdit
   | InvertEdit
-  | GrayscaleEdit;
+  | GrayscaleEdit
+  | CropEdit
+  | RotateEdit;
 
 export const EDIT_STATE_VERSION = 1 as const;
 

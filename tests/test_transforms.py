@@ -148,12 +148,29 @@ class TestEditsValidation(unittest.TestCase):
             [{"edit": "sharpen", "radius": 100}],
             [{"edit": "sharpen", "amount": 6}],
             [{"edit": "vignette", "size": 3}],
+            [{"edit": "crop", "width": 2}],
+            [{"edit": "crop", "x": 2}],
+            [{"edit": "rotate", "angle": 200}],
+            [{"edit": "rotate", "angle": -181}],
         ]
         for edits in cases:
             with self.subTest(edits=edits):
                 rc, _, err = run_json(self.req(edits))
                 self.assertEqual(rc, 1, str(edits))
                 assert_error_json(self, err, "out of range")
+
+    def test_crop_rejects_empty_and_overflowing_region(self):
+        for edits, msg in [
+            ([{"edit": "crop", "width": 0}], "must be > 0"),
+            ([{"edit": "crop", "height": 0}], "must be > 0"),
+            ([{"edit": "crop", "x": 0.8, "width": 0.5}], "exceeds 1"),
+            ([{"edit": "crop", "y": 0.8, "height": 0.5}], "exceeds 1"),
+            ([{"edit": "crop", "x": "a"}], "must be a number"),
+        ]:
+            with self.subTest(edits=edits):
+                rc, _, err = run_json(self.req(edits))
+                self.assertEqual(rc, 1, str(edits))
+                assert_error_json(self, err, msg)
 
     def test_non_number_param(self):
         rc, _, err = run_json(self.req([{"edit": "exposure", "stops": "big"}]))
@@ -199,6 +216,10 @@ class TestEditsParity(unittest.TestCase):
             {"edit": "blur", "radius": 0},
             {"edit": "sharpen", "radius": 0, "amount": 0},
             {"edit": "vignette", "size": 0.5, "amount": 0},
+            {"edit": "crop"},
+            {"edit": "crop", "x": 0, "y": 0, "width": 1, "height": 1},
+            {"edit": "rotate"},
+            {"edit": "rotate", "angle": 0},
         ]
         with tempfile.TemporaryDirectory() as td:
             ref = convert_ppm_raster(DRIVER, None, td, "ref")
@@ -407,6 +428,153 @@ class TestEditsParity(unittest.TestCase):
                     check_magic(read_bytes(dst), ".png")
 
 
+class TestEditsGeometry(unittest.TestCase):
+    """Crop/rotate: dims, content mapping, alpha/band flow, metadata."""
+
+    def setUp(self):
+        need_edits(self)
+
+    def test_crop_center_geometry_and_content(self):
+        # sample.jpg is 290x442: center 50% -> 145x221, center pixel preserved.
+        # Rect uses round-half-away (C++ lround / JS Math.round): 0.25*290 =
+        # 72.5 -> 73, so compute the expectation the same way.
+        import math as _math
+
+        with tempfile.TemporaryDirectory() as td:
+            ref = convert_ppm(DRIVER, None, td, "ref")
+            rw, rh, rpx = parse_ppm(ref)
+            out = convert_ppm(
+                DRIVER,
+                [{"edit": "crop", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+                td,
+                "crop",
+            )
+            w, h, px = parse_ppm(out)
+            self.assertEqual((w, h), (145, 221))
+            left, top = _math.floor(0.25 * rw + 0.5), _math.floor(0.25 * rh + 0.5)
+            self.assertEqual((left, top), (73, 111))
+            for (x, y) in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 2, h // 2)):
+                a = px[(y * w + x) * 3 : (y * w + x) * 3 + 3]
+                b = rpx[((y + top) * rw + (x + left)) * 3 : ((y + top) * rw + (x + left)) * 3 + 3]
+                self.assertEqual(bytes(a), bytes(b), f"pixel {(x, y)}")
+
+    def test_rotate_quarter_turns_geometry_and_content(self):
+        # 290x442: 90 -> 442x290 with out(x,y) == in(y,H-1-x) (clockwise).
+        with tempfile.TemporaryDirectory() as td:
+            ref = convert_ppm(DRIVER, None, td, "ref")
+            rw, rh, rpx = parse_ppm(ref)
+            for angle, ew, eh in ((90, 442, 290), (-90, 442, 290), (180, 290, 442)):
+                out = convert_ppm(DRIVER, [{"edit": "rotate", "angle": angle}], td, f"r{angle}")
+                w, h, px = parse_ppm(out)
+                self.assertEqual((w, h), (ew, eh), f"angle={angle}")
+                spots = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 3, h // 3)]
+                for (x, y) in spots:
+                    if angle == 90:
+                        ix, iy = y, rh - 1 - x
+                    elif angle == -90:
+                        ix, iy = rw - 1 - y, x
+                    else:
+                        ix, iy = rw - 1 - x, rh - 1 - y
+                    a = px[(y * w + x) * 3 : (y * w + x) * 3 + 3]
+                    b = rpx[(iy * rw + ix) * 3 : (iy * rw + ix) * 3 + 3]
+                    self.assertEqual(bytes(a), bytes(b), f"angle={angle} pixel={(x, y)}")
+
+    def test_rotate_arbitrary_expands_and_adds_alpha(self):
+        import math as _math
+
+        with tempfile.TemporaryDirectory() as td:
+            for angle in (30, 45, -15):
+                out = convert_ppm(DRIVER, [{"edit": "rotate", "angle": angle}], td, f"ra{angle}")
+                w, h, _ = parse_ppm(out)
+                r = _math.radians(angle)
+                ew = round(290 * abs(_math.cos(r)) + 442 * abs(_math.sin(r)))
+                eh = round(290 * abs(_math.sin(r)) + 442 * abs(_math.cos(r)))
+                self.assertEqual((w, h), (ew, eh), f"angle={angle}")
+            # 3-band input gains a transparent band; 4-band input keeps 4.
+            dst = os.path.join(td, "rot.png")
+            rc, bout, berr = run_json(
+                {
+                    "cmd": "convert",
+                    "input": data_path(DRIVER),
+                    "output": dst,
+                    "edits": [{"edit": "rotate", "angle": 30}],
+                }
+            )
+            self.assertEqual(rc, 0, berr[:300])
+            self.assertEqual(assert_info_json(self, bout, berr)["bands"], 4)
+            dst2 = os.path.join(td, "rot_rgba.png")
+            rc, bout2, berr2 = run_json(
+                {
+                    "cmd": "convert",
+                    "input": data_path("rgba.png"),
+                    "output": dst2,
+                    "edits": [{"edit": "rotate", "angle": 30}],
+                }
+            )
+            self.assertEqual(rc, 0, berr2[:300])
+            self.assertEqual(assert_info_json(self, bout2, berr2)["bands"], 4)
+
+    def test_crop_then_rotate_chain(self):
+        # Order matters for geometry too: crop shrinks, rotate expands.
+        with tempfile.TemporaryDirectory() as td:
+            dst = os.path.join(td, "chain.ppm")
+            rc, out, err = run_json(
+                {
+                    "cmd": "convert",
+                    "input": data_path(DRIVER),
+                    "output": dst,
+                    "edits": [
+                        {"edit": "crop", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8},
+                        {"edit": "rotate", "angle": 30},
+                        {"edit": "sepia", "amount": 0.5},
+                    ],
+                }
+            )
+            self.assertEqual(rc, 0, err[:300])
+            w, h, _ = parse_ppm(read_bytes(dst))
+            import math as _math
+
+            r = _math.radians(30)
+            cw, chh = round(0.8 * 290), round(0.8 * 442)
+            ew = round(cw * abs(_math.cos(r)) + chh * abs(_math.sin(r)))
+            eh = round(cw * abs(_math.sin(r)) + chh * abs(_math.cos(r)))
+            self.assertEqual((w, h), (ew, eh))
+            obj = assert_info_json(self, out, err)
+            self.assertEqual(obj["bands"], 4)  # rotate added alpha, sepia kept it
+
+    def test_crop_preserves_alpha_and_gainmap(self):
+        with tempfile.TemporaryDirectory() as td:
+            dst = os.path.join(td, "c.png")
+            rc, out, err = run_json(
+                {
+                    "cmd": "convert",
+                    "input": data_path("rgba.png"),
+                    "output": dst,
+                    "edits": [{"edit": "crop", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}],
+                }
+            )
+            self.assertEqual(rc, 0, err[:300])
+            obj = assert_info_json(self, out, err, width=64, height=64)
+            self.assertEqual(obj["bands"], 4)
+            check_magic(read_bytes(dst), ".png")
+
+    def test_gainmap_survives_geometric_edits(self):
+        src = data_path("ultra-hdr.jpg")
+        if not os.path.isfile(src):
+            self.skipTest("missing ultra-hdr.jpg fixture")
+        with tempfile.TemporaryDirectory() as td:
+            for edit in (
+                {"edit": "crop", "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8},
+                {"edit": "rotate", "angle": 30},
+            ):
+                with self.subTest(edit=edit):
+                    dst = os.path.join(td, "graded.jpg")
+                    rc, _, err = run_json({"cmd": "convert", "input": src, "output": dst, "edits": [edit]})
+                    self.assertEqual(rc, 0, err[:300])
+                    blob = read_bytes(dst)
+                    self.assertIn(b"MPF\x00", blob, f"UHDR gainmap lost for {edit}")
+
+
 class TestEditsThumbnailStdout(unittest.TestCase):
     def setUp(self):
         need_edits(self)
@@ -441,6 +609,31 @@ class TestEditsThumbnailStdout(unittest.TestCase):
         )
         self.assertEqual(rc, 0, err[:300])
         check_magic(blob, ".png")
+
+    def test_thumbnail_geometric_edits_geometry(self):
+        # Geometric edits compose after the thumbnail resize: a 64x64 thumb
+        # cropped to center 50% -> 32x32; a 64x32 thumb rotated 90 -> 32x64.
+        with tempfile.TemporaryDirectory() as td:
+            for width, height, edits, ew, eh in [
+                (64, 64, [{"edit": "crop", "x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}], 32, 32),
+                (64, 32, [{"edit": "rotate", "angle": 90}], 32, 64),
+            ]:
+                with self.subTest(edits=edits):
+                    dst = os.path.join(td, "t.jpg")
+                    rc, out, err = run_json(
+                        {
+                            "cmd": "thumbnail",
+                            "input": data_path("landscape.jpg"),
+                            "output": dst,
+                            "width": width,
+                            "height": height,
+                            "edits": edits,
+                        }
+                    )
+                    self.assertEqual(rc, 0, err[:300])
+                    obj = assert_info_json(self, out, err, width=ew, height=eh)
+                    self.assertEqual(obj.get("output"), dst)
+                    check_magic(read_bytes(dst), ".jpg")
 
 
 if __name__ == "__main__":

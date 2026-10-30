@@ -1,9 +1,13 @@
 # @radialapps/memories-vips-editor — headless WebGL preview + VIPS-mappable edit list
 
-Pure-TypeScript, zero-dependency library. The caller provides a `<canvas>`;
-the pipeline renders an **ordered list of image edits** with fullscreen
-shader passes (ping-pong, like `glfx.js`). The same list serializes to JSON
-that `vips-preview` (`convert`/`thumbnail` `"edits"`) applies before saving.
+Pure-TypeScript, zero-dependency library. The caller provides a `<canvas>`
+**and owns its size** (backing store `width`/`height` plus CSS); the
+pipeline renders an **ordered list of image edits** with fullscreen
+shader passes (ping-pong, like `glfx.js`), presenting contain-fit —
+centered on opaque black, never resizing the canvas. A ResizeObserver
+re-presents when the host resizes the canvas box. The same list serializes
+to JSON that `vips-preview` (`convert`/`thumbnail` `"edits"`) applies
+before saving.
 
 ```
 editor/
@@ -55,10 +59,12 @@ the CLI rejects out-of-range values, so normalize client-side.
 ## VIPS mapping
 
 sRGB 0..1 floats, array order, single uchar clip at the end; alpha is split
-off, untouched, reattached. `blur`/`sharpen` are visually matched, not
-bit-exact; everything else agrees to float precision (±1 LSB after quantize).
-Thumbnail edits run **after** resize (radii are output pixels); UHDR
-ICC+gainmap pass through untouched (gainmap is not re-derived).
+off, normalized to 0..1 float alongside, reattached. `blur`/`sharpen` are
+visually matched, not bit-exact; everything else agrees to float precision
+(±1 LSB after quantize). Thumbnail edits run **after** resize (radii are
+output pixels); UHDR ICC+gainmap pass through untouched (gainmap is not
+re-derived). `rotate` by a non-90 angle appends a transparent alpha band
+(corners + fringes); 90° multiples stay exact with no band change.
 
 | edit                    | params                                 | VIPS                           |
 | ----------------------- | -------------------------------------- | ------------------------------ |
@@ -69,6 +75,8 @@ ICC+gainmap pass through untouched (gainmap is not re-derived).
 | `vibrance` / `vignette` | `amount` −1..1 / `size`, `amount` 0..1 | identical CPU loop             |
 | `grayscale` / `invert`  | —                                      | `(r+g+b)/3` / `linear(-1, +1)` |
 | `blur` / `sharpen`      | `radius` 0..100 / +`amount` 0..5       | `gaussblur(σ)` (+ unsharp mix) |
+| `crop`                  | `x`,`y`,`width`,`height` 0..1 fractions| `extract_area` (rounded+clamped)|
+| `rotate`                | `angle` −180..180 (clockwise °)        | `rot()` @90s, else `rotate()` |
 
 Excluded (no clean VIPS mapping): `denoise`, `noise`, `curves`,
 `lensBlur`/`tiltShift`/`zoomBlur`, halftones, warps.

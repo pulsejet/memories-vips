@@ -1,11 +1,14 @@
 // pipeline.ts — headless WebGL preview for an ordered edit list.
 //
-// Headless means: the caller owns the <canvas> (layout, sizing policy, DOM).
-// The pipeline takes over its WebGL context, uploads the source image, and
-// runs each edit through its Transform (transforms/) — single shader passes
-// or multi-pass sequences (blur/sharpen) ping-ponging between two RGBA
-// textures, the same structure as glfx.js Canvas — and leaves the result on
-// the canvas.
+// Headless means: the caller owns the <canvas> — layout, DOM, *and* sizing
+// (backing store `canvas.width/height` plus any CSS). The pipeline takes
+// over its WebGL context, uploads the source image, and runs each edit
+// through its Transform (transforms/) — single shader passes or multi-pass
+// sequences (blur/sharpen) ping-ponging between two RGBA textures, the same
+// structure as glfx.js Canvas — and presents the result letterboxed
+// (contain-fit, centered on opaque black) without ever resizing the canvas.
+// A ResizeObserver on the canvas re-renders when its box changes, so the
+// image stays centered as the host resizes it.
 //
 // Serialization (toJSON) emits the canonical {version, edits} state; the same
 // array (normalized) is what vips-preview accepts as "edits".
@@ -29,13 +32,23 @@ export class EditPipeline {
   private extra: Target | null = null;
   private imgW = 0;
   private imgH = 0;
+  private outW = 0;
+  private outH = 0;
   private state: EditState = emptyState();
   private floatOK = false;
+  private highp = false;
+  // Kept alive for the pipeline's lifetime; re-renders when the host
+  // resizes the canvas box. Never disconnected: the canvas outlives the
+  // pipeline anyway (destroyed together).
+  private resizeObserver: ResizeObserver | null = null;
 
   /**
    * Take over the canvas' WebGL context. preserveDrawingBuffer stays true
    * so the demo can read pixels back; premultipliedAlpha stays false
-   * so alpha survives the passes unmodified. Throws when WebGL is missing.
+   * so alpha survives the passes unmodified. The canvas backing store is
+   * never touched — size it externally; the pipeline contain-fits the
+   * output into it (centered, black surround) and re-renders on resize.
+   * Throws when WebGL is missing.
    */
   public constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -49,6 +62,24 @@ export class EditPipeline {
     if (!gl) throw new Error('WebGL is not available on this canvas');
     this.gl = gl;
     this.floatOK = this.probeFloat();
+    // Rotate's manual-bilinear shader wants highp for pixel-scale math;
+    // fall back to mediump (same body) where the GPU lacks it.
+    try {
+      const fmt = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+      this.highp = !!fmt && fmt.precision > 0;
+    } catch {
+      this.highp = false;
+    }
+    // Recenter/refill when the host resizes the canvas box. Guarded for
+    // non-DOM runtimes (node tests); no disconnect needed.
+    try {
+      if (typeof ResizeObserver !== 'undefined') {
+        this.resizeObserver = new ResizeObserver(() => this.render());
+        this.resizeObserver.observe(canvas);
+      }
+    } catch {
+      this.resizeObserver = null;
+    }
     const buf = gl.createBuffer();
     if (!buf) throw new Error('WebGL: createBuffer failed');
     this.quad = buf;
@@ -56,12 +87,12 @@ export class EditPipeline {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
   }
 
-  /** Source image size (canvas backing store matches it after setImage). */
+  /** Output image size (source size when no geometric edit applies). */
   public get width(): number {
-    return this.imgW;
+    return this.outW;
   }
   public get height(): number {
-    return this.imgH;
+    return this.outH;
   }
 
   /** Ordered edit list (live reference — mutate via setEdits/addEdit/...). */
@@ -140,9 +171,10 @@ export class EditPipeline {
   }
 
   /**
-   * Upload a new source image, resizing the canvas and all targets to it.
+   * Upload a new source image, (re)allocating all targets to it.
    * Oversized sources are downscaled through a 2D canvas first (see
-   * MAX_DIM); old GL targets are deleted. Ends with a full render().
+   * MAX_DIM); old GL targets are deleted. The canvas backing store is
+   * left alone (externally owned). Ends with a full render().
    * Throws with a message instead of rendering black on failure.
    */
   public setImage(source: TexImageSource): void {
@@ -169,8 +201,8 @@ export class EditPipeline {
     }
     this.imgW = w;
     this.imgH = h;
-    this.canvas.width = w;
-    this.canvas.height = h;
+    this.outW = w;
+    this.outH = h;
     for (const t of [this.src, this.ping, this.pong, this.extra]) {
       if (t) {
         gl.deleteTexture(t.tex);
@@ -203,22 +235,46 @@ export class EditPipeline {
    * Re-run all passes: copy source -> ping, then apply each edit in order,
    * ping-ponging between the two working targets (`cur` holds the latest
    * result, `nxt` is the scratch target; multi-pass edits may bounce
-   * between them internally and return either side). No-op when no image
-   * is loaded yet.
+   * between them internally and return either side). Geometric edits
+   * (crop/rotate) change dimensions: `nxt` is resized to the edit's
+   * outputDims before apply, `extra` is kept at the input size (sharpen
+   * scratch). Presents contain-fit into the externally-sized canvas.
+   * No-op when no image is loaded yet.
    */
   public render(): void {
     if (!this.src || !this.ping || !this.pong || !this.extra || this.imgW === 0) return;
+    this.ensureSize('ping', this.imgW, this.imgH);
     // Start from the source image.
     this.blit(this.src, this.ping);
     let cur: Target = this.ping;
     let nxt: Target = this.pong;
+    let curW = this.imgW;
+    let curH = this.imgH;
     const ctx = this.renderContext();
     for (const edit of this.state.edits) {
       const t = TRANSFORMS[edit.edit];
       if (!t) continue; // validated on set; skip defensively
-      cur = t.apply(ctx, cur, nxt, normalizeEdit(edit) as never);
-      nxt = cur === this.ping ? this.pong : this.ping;
+      const params = normalizeEdit(edit) as never;
+      const od = t.outputDims?.(curW, curH, params) ?? { w: curW, h: curH };
+      nxt = this.ensureSize(nxt === this.ping ? 'ping' : 'pong', od.w, od.h);
+      ctx.extra = this.ensureSize('extra', curW, curH);
+      ctx.width = curW;
+      ctx.height = curH;
+      ctx.outWidth = od.w;
+      ctx.outHeight = od.h;
+      cur = t.apply(ctx, cur, nxt, params);
+      if (cur === this.ping || cur === this.pong) {
+        if (cur === nxt) {
+          curW = od.w;
+          curH = od.h;
+        }
+        nxt = cur === this.ping ? this.pong : this.ping;
+      }
+      // Multi-pass edits return `from` (same size) or `to`; anything else
+      // (never today) keeps the current dims.
     }
+    this.outW = curW;
+    this.outH = curH;
     this.toCanvas(cur);
   }
 
@@ -233,6 +289,9 @@ export class EditPipeline {
     return {
       width: this.imgW,
       height: this.imgH,
+      outWidth: this.imgW,
+      outHeight: this.imgH,
+      highp: this.highp,
       extra,
       pass: (frag, from, to, setUniforms, extraTex) =>
         this.pass(frag, from, to, setUniforms, extraTex),
@@ -242,6 +301,22 @@ export class EditPipeline {
   }
 
   // --- internals ---
+
+  /** Resize a working target when geometry changed (returns live target). */
+  private ensureSize(which: 'ping' | 'pong' | 'extra', w: number, h: number): Target {
+    const t = which === 'ping' ? this.ping : which === 'pong' ? this.pong : this.extra;
+    if (!t) throw new Error('render: no targets');
+    if (t.w === w && t.h === h) return t;
+    const gl = this.gl;
+    gl.deleteTexture(t.tex);
+    gl.deleteFramebuffer(t.fb);
+    const fresh = this.makeTarget(w, h, this.floatOK ? gl.FLOAT : gl.UNSIGNED_BYTE);
+    if (which === 'ping') this.ping = fresh;
+    else if (which === 'pong') this.pong = fresh;
+    else this.extra = fresh;
+    this.checkGLError('target resize');
+    return fresh;
+  }
 
   /**
    * Decide float vs 8-bit ping-pong targets. Float needs both the
@@ -288,7 +363,7 @@ export class EditPipeline {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return { tex, fb };
+    return { tex, fb, w, h };
   }
 
   /**
@@ -345,7 +420,7 @@ export class EditPipeline {
   ): void {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, to.fb);
-    gl.viewport(0, 0, this.imgW, this.imgH);
+    gl.viewport(0, 0, to.w, to.h);
     const prog = this.program(frag);
     gl.useProgram(prog);
     const loc = gl.getAttribLocation(prog, 'aPos');
@@ -386,7 +461,7 @@ export class EditPipeline {
     this.pass(GAUSS_FRAG, from, to, (gl, p) => {
       const uDir = gl.getUniformLocation(p, 'dir');
       if (uDir) {
-        gl.uniform2f(uDir, horizontal ? 1 / this.imgW : 0, horizontal ? 0 : 1 / this.imgH);
+        gl.uniform2f(uDir, horizontal ? 1 / from.w : 0, horizontal ? 0 : 1 / from.h);
       }
       const uK = gl.getUniformLocation(p, 'kernel');
       if (uK) gl.uniform1fv(uK, padded);
@@ -396,16 +471,25 @@ export class EditPipeline {
   }
 
   /**
-   * Present the final result on the canvas. Rendering goes to the default
-   * framebuffer (null) instead of a target, and the blit shader flips Y:
-   * uploads are stored unflipped (texture v=0 is the image top row), while
-   * the framebuffer's row 0 is displayed at the canvas bottom — sampling
-   * `1-y` puts the image top back at the canvas top.
+   * Present the final result contain-fit into the externally-sized canvas:
+   * the whole backing store is cleared to opaque black, then the image is
+   * drawn into the largest centered rect preserving aspect ratio (the
+   * BLIT_FRAG flip still compensates the unflipped upload). The canvas
+   * backing store is only ever read here, never resized.
    */
   private toCanvas(from: Target): void {
     const gl = this.gl;
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.imgW, this.imgH);
+    if (cw <= 0 || ch <= 0 || this.outW <= 0 || this.outH <= 0) return;
+    // Black surround first (clear ignores the viewport; scissor stays off).
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const scale = Math.min(cw / this.outW, ch / this.outH);
+    const dw = Math.min(cw, Math.max(1, Math.round(this.outW * scale)));
+    const dh = Math.min(ch, Math.max(1, Math.round(this.outH * scale)));
+    gl.viewport(Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
     const prog = this.program(BLIT_FRAG);
     gl.useProgram(prog);
     const loc = gl.getAttribLocation(prog, 'aPos');
