@@ -19,7 +19,12 @@ export function exposureMult(stops: number): number {
   return Math.pow(2, clampf(-5, stops, 5));
 }
 
-/** 1D gaussian kernel for a blur radius (sigma = radius/2). Preview + docs. */
+/** 1D gaussian kernel for a blur radius (sigma = radius/2). Preview + docs.
+ *
+ * Single source of truth, ported term-for-term to src/transforms/gaussian.h:
+ * both sides convolve these exact weights (separable, clamp edges), so
+ * preview and VIPS agree to ±1 LSB at every radius.
+ */
 export function gaussianKernel(radius: number): number[] {
   const r = clampf(0, radius, 100);
   if (r <= 0) return [1];

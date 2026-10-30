@@ -321,6 +321,134 @@ class TestEditsParity(unittest.TestCase):
             # every pixel identical (solid input -> solid output)
             self.assertEqual(px, bytes(got) * (w * h))
 
+    def test_blur_matches_preview_kernel(self):
+        """Pin the C++ blur to a Python port of editor/src/math.ts gaussianKernel.
+
+        Both sides must use the same discrete kernel (sigma=radius/2,
+        half=min(15,max(1,ceil(2*sigma))), clamp edges); gaussblur's integer
+        precision / min_ampl truncation / uncapped mask used to diverge
+        (radius 30: maxdiff 32, mean 6).
+        """
+        import math as _math
+
+        def kernel(radius):
+            r = min(100.0, max(0.0, radius))
+            if r <= 0:
+                return [1.0]
+            sigma = r / 2.0
+            half = min(15, max(1, _math.ceil(sigma * 2.0)))
+            w = [_math.exp(-0.5 * (i / sigma) ** 2) for i in range(-half, half + 1)]
+            s = sum(w)
+            return [v / s for v in w]
+
+        def blur_roundtrip(src, w, h, k):
+            n = len(k)
+            c = n // 2
+            tmp = [[(0.0, 0.0, 0.0)] * w for _ in range(h)]
+            for y in range(h):
+                for x in range(w):
+                    acc = [0.0, 0.0, 0.0]
+                    for i, wt in enumerate(k):
+                        xx = min(w - 1, max(0, x + i - c))
+                        p = src[(y * w + xx) * 3 : (y * w + xx) * 3 + 3]
+                        for ch in range(3):
+                            acc[ch] += p[ch] / 255.0 * wt
+                    tmp[y][x] = tuple(acc)
+            out = bytearray()
+            for y in range(h):
+                for x in range(w):
+                    for ch in range(3):
+                        acc = 0.0
+                        for i, wt in enumerate(k):
+                            yy = min(h - 1, max(0, y + i - c))
+                            acc += tmp[yy][x][ch] * wt
+                        out.append(min(255, max(0, round(acc * 255))))
+            return bytes(out)
+
+        with tempfile.TemporaryDirectory() as td:
+            w, h = 24, 16
+            px = bytearray()
+            for y in range(h):
+                for x in range(w):
+                    px += bytes([(255 if x >= w // 2 else 0), (x * 11) % 256, (y * 17) % 256])
+            src = os.path.join(td, "step.ppm")
+            with open(src, "wb") as f:
+                f.write(f"P6\n{w} {h}\n255\n".encode() + bytes(px))
+            # small radius (full kernel) + large radius (31-tap cap region)
+            for radius in (2, 6, 30):
+                with self.subTest(radius=radius):
+                    dst = os.path.join(td, f"b{radius}.ppm")
+                    rc, out, err = run_json(
+                        {
+                            "cmd": "convert",
+                            "input": src,
+                            "output": dst,
+                            "edits": [{"edit": "blur", "radius": radius}],
+                        }
+                    )
+                    self.assertEqual(rc, 0, err[:300])
+                    _, _, got = parse_ppm(read_bytes(dst))
+                    exp = blur_roundtrip(bytes(px), w, h, kernel(radius))
+                    bad = sum(1 for a, b in zip(got, exp) if abs(a - b) > 1)
+                    self.assertEqual(bad, 0, f"radius={radius}: {bad} bytes off by >1")
+
+    def test_sharpen_matches_preview_kernel(self):
+        """Unsharp mix must match mix(blur, orig, 1+amount) with the shared kernel."""
+        import math as _math
+
+        def kernel(radius):
+            sigma = radius / 2.0
+            half = min(15, max(1, _math.ceil(sigma * 2.0)))
+            w = [_math.exp(-0.5 * (i / sigma) ** 2) for i in range(-half, half + 1)]
+            s = sum(w)
+            return [v / s for v in w]
+
+        with tempfile.TemporaryDirectory() as td:
+            w, h = 24, 16
+            px = bytearray()
+            for y in range(h):
+                for x in range(w):
+                    px += bytes([(255 if x >= w // 2 else 0), (x * 11) % 256, (y * 17) % 256])
+            src = os.path.join(td, "step.ppm")
+            with open(src, "wb") as f:
+                f.write(f"P6\n{w} {h}\n255\n".encode() + bytes(px))
+            radius, amount = 5, 2.0
+            k = kernel(radius)
+            n, c = len(k), len(k) // 2
+            # separable clamp blur in float, then unsharp mix
+            fpx = [v / 255.0 for v in px]
+            tmp = []
+            for y in range(h):
+                row = []
+                for x in range(w):
+                    acc = [0.0, 0.0, 0.0]
+                    for i, wt in enumerate(k):
+                        xx = min(w - 1, max(0, x + i - c))
+                        for ch in range(3):
+                            acc[ch] += fpx[(y * w + xx) * 3 + ch] * wt
+                    row.append(acc)
+                tmp.append(row)
+            exp = bytearray()
+            for y in range(h):
+                for x in range(w):
+                    for ch in range(3):
+                        b = sum(tmp[min(h - 1, max(0, y + i - c))][x][ch] * wt for i, wt in enumerate(k))
+                        v = fpx[(y * w + x) * 3 + ch] * (1 + amount) - b * amount
+                        exp.append(min(255, max(0, round(v * 255))))
+            dst = os.path.join(td, "s.ppm")
+            rc, out, err = run_json(
+                {
+                    "cmd": "convert",
+                    "input": src,
+                    "output": dst,
+                    "edits": [{"edit": "sharpen", "radius": radius, "amount": amount}],
+                }
+            )
+            self.assertEqual(rc, 0, err[:300])
+            _, _, got = parse_ppm(read_bytes(dst))
+            bad = sum(1 for a, b in zip(got, exp) if abs(a - b) > 1)
+            self.assertEqual(bad, 0, f"{bad} bytes off by >1")
+
     def test_order_matters(self):
         """sepia->grayscale vs grayscale->sepia must differ (ordered pipeline)."""
         with tempfile.TemporaryDirectory() as td:

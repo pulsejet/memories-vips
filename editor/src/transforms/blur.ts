@@ -1,4 +1,5 @@
-// blur.ts — separable gaussian (sigma = radius/2).
+// blur.ts — separable gaussian with the shared preview kernel
+// (see math.ts gaussianKernel; VIPS side: src/transforms/gaussian.h).
 import { clampf, gaussianKernel } from '../math.js';
 import {
   isNumInRange,

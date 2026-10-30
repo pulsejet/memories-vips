@@ -6,6 +6,13 @@ demo/parity.ts) and runs a host vips-preview binary over the UltraHDR
 fixture. Writes parity/src.jpg plus one parity/vips-<id>.jpg per case.
 No checks of any kind — eyeball the page.
 
+The source is thumbnailed to the preview's working resolution (longest
+side 2048, aspect-fit) so both sides start from identical pixels: the
+browser pipeline downscales larger uploads to MAX_DIM before editing,
+while `convert` edits at native resolution — comparing full-res VIPS
+output against a downscaled preview would make radius-in-pixels edits
+(blur/sharpen) mismatch by the scale factor.
+
 Usage: python3 editor/demo/generate-parity.py [--bin PATH] [--quality 90]
 
 Binary: --bin, $VIPS_PREVIEW_BIN, else /tmp/opencode/vips-preview (copy it
@@ -46,9 +53,12 @@ def main() -> None:
     run(
         bin,
         {
-            "cmd": "convert",
+            "cmd": "thumbnail",
             "input": os.path.join(DATA, "ultra-hdr.jpg"),
             "output": src,
+            "width": 2048,
+            "height": 2048,
+            "crop": "none",
             "quality": args.quality,
         },
     )

@@ -1,6 +1,7 @@
-// transforms/blur.h — separable gaussian (sigma = radius/2).
+// transforms/blur.h — separable gaussian with the shared preview kernel.
 #pragma once
 
+#include "gaussian.h"
 #include "transform.h"
 
 class Blur final : public Transform {
@@ -9,10 +10,7 @@ class Blur final : public Transform {
 
   const char *name() const override { return "blur"; }
 
-  VImage apply(VImage im) const override {
-    if (radius_ <= 0.0) return im;
-    return im.gaussblur(radius_ / 2.0);
-  }
+  VImage apply(VImage im) const override { return gaussian_blur(im, radius_); }
 
  private:
   double radius_;
