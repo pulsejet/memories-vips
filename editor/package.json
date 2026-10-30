@@ -1,0 +1,23 @@
+{
+  "name": "@radialapps/memories-vips-editor",
+  "version": "0.1.0",
+  "description": "Headless WebGL preview library for vips-static edits. Renders an ordered op list on a caller-provided canvas; serializes the same list as JSON for the vips-preview CLI (convert/thumbnail ... \"ops\": [...]).",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc --noEmit && vite build --config vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write src demo tests *.json *.md",
+    "format:check": "prettier --check src demo tests *.json *.md"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "prettier": "^3.9.10",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -10,6 +10,7 @@
 #include <string>
 
 #include "json.hpp"
+#include "transforms/protocol.h"
 #include "util.h"
 
 using nlohmann::json;
@@ -26,6 +27,8 @@ using nlohmann::json;
 /// - width/height: thumbnail size, default 512x512, must be positive.
 /// - crop: attention (default) | none | low | high (thumbnail only).
 /// - quality: thumbnail default 80, convert default 90.
+/// - edits: ordered pixel-edit list applied after decode (thumbnail: after
+///   resize) and before save; see edit.h. Default [] (no-edit).
 struct Request {
   std::string cmd;
   std::string input;
@@ -35,6 +38,7 @@ struct Request {
   int height = 512;
   std::string crop = "attention";
   int quality = 80;
+  std::vector<TransformPtr> edits;
 };
 
 /// Fetch a required string field; throws if missing or not a string.
@@ -97,9 +101,10 @@ inline Request parse_request(const json &j) {
   // Stdout streaming flag; the file is skipped when true.
   r.to_stdout = optional_bool(j, "stdout", false);
 
-  // Convert is decode + re-encode; only quality applies.
+  // Convert is decode + re-encode; quality + optional edit edits apply.
   if (r.cmd == "convert") {
     r.quality = optional_int(j, "quality", 90);
+    r.edits = parse_transforms(j);
     return r;
   }
 
@@ -116,6 +121,7 @@ inline Request parse_request(const json &j) {
     throw std::runtime_error("\"crop\" must be attention|none|low|high");
 
   r.quality = optional_int(j, "quality", 80);
+  r.edits = parse_transforms(j);
 
   return r;
 }

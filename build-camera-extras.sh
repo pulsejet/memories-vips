@@ -161,10 +161,12 @@ CLI_SRC="${PACKAGE}/src/preview.cc"
 # Static archives link single-pass; pkg-config order can place -lz before its
 # users (libraw/libpng/libtiff), so close the closure in --start-group and
 # trail -lz (harmless duplicate when already ordered).
+# -I.../src lets headers in src/transforms/ include siblings (json.hpp, ...)
+# by short name.
 # shellcheck disable=SC2086
 CXX_BIN="${CXX:-c++}"
 # shellcheck disable=SC2086
-"$CXX_BIN" -O3 -fopenmp "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
+"$CXX_BIN" -O3 -fopenmp -I"${PACKAGE}/src" "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
   $($PKG_CONFIG_BIN --cflags vips-cpp) $($PKG_CONFIG_BIN --cflags libraw 2>/dev/null || true) \
   -Wl,--start-group $($PKG_CONFIG_BIN --libs --static vips-cpp) $($PKG_CONFIG_BIN --libs --static libraw 2>/dev/null || echo "-lraw -lraw_r") -Wl,--end-group -lz \
   -static -static-libstdc++ -static-libgcc

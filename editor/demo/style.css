@@ -1,0 +1,113 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  background: #111;
+  color: #eee;
+}
+header {
+  padding: 12px 20px;
+  border-bottom: 1px solid #333;
+}
+header h1 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+header p {
+  margin: 0;
+  color: #aaa;
+  font-size: 13px;
+}
+main {
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+  flex-wrap: wrap;
+}
+.stage {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+canvas#view {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid #333;
+}
+.file input {
+  margin-left: 6px;
+}
+button,
+select {
+  background: #222;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+#edits {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.edit {
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px;
+  background: #1a1a1a;
+}
+.edit header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: none;
+  padding: 0 0 6px;
+}
+.edit header strong {
+  flex: 1;
+}
+.edit header button {
+  font-size: 12px;
+}
+.param {
+  display: grid;
+  grid-template-columns: 110px 1fr 64px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  margin: 2px 0;
+}
+.param input[type='range'] {
+  width: 100%;
+}
+.json {
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+.json pre {
+  background: #000;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.hint {
+  font-size: 12px;
+  color: #aaa;
+}
+.hint code {
+  color: #ddd;
+}

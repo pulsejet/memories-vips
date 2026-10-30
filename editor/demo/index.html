@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vips-static editor demo</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>vips-static editor demo</h1>
+      <p>
+        Headless WebGL preview of the ordered edit list. The canvas shows exactly what the VIPS side
+        renders for the same JSON (modulo 8-bit rounding on GPUs without float render targets).
+      </p>
+    </header>
+    <main>
+      <section class="stage">
+        <div class="toolbar">
+          <label class="file">Open image <input id="file" type="file" accept="image/*" /></label>
+          <button id="gradient" type="button">Use gradient</button>
+          <span id="meta"></span>
+        </div>
+        <canvas id="view"></canvas>
+        <div class="toolbar">
+          <label>
+            Add edit
+            <select id="addedit">
+              <option value="brightnessContrast">brightnessContrast</option>
+              <option value="exposure">exposure</option>
+              <option value="hueSaturation">hueSaturation</option>
+              <option value="sepia">sepia</option>
+              <option value="vibrance">vibrance</option>
+              <option value="blur">blur</option>
+              <option value="sharpen">sharpen</option>
+              <option value="vignette">vignette</option>
+              <option value="invert">invert</option>
+              <option value="grayscale">grayscale</option>
+            </select>
+          </label>
+          <button id="add" type="button">Add</button>
+          <button id="clear" type="button">Clear</button>
+        </div>
+        <div id="edits"></div>
+      </section>
+      <aside class="json">
+        <div class="toolbar">
+          <strong>edits JSON</strong>
+          <button id="copy" type="button">Copy</button>
+        </div>
+        <pre id="out">{}</pre>
+        <p class="hint">
+          Feed it to the CLI, e.g.
+          <code
+            >echo '{"cmd":"convert","input":"in.jpg","output":"out.jpg","edits":&lt;edits&gt;}' |
+            vips-preview 3&gt;info.json</code
+          >
+          (open <code>info.json</code> on fd 3). Thumbnails accept <code>"edits"</code> too; edits
+          run after resize, so blur/sharpen radii are output pixels.
+        </p>
+      </aside>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

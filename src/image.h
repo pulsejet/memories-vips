@@ -1,4 +1,4 @@
-// image.h — libvips ops for vips-preview.
+// image.h — libvips edits for vips-preview.
 //
 // Saver is picked from the OUTPUT extension; output streams straight to
 // the file (or /dev/stdout when "stdout" is true) without buffering —
@@ -19,6 +19,7 @@
 #include <string>
 
 #include "protocol.h"
+#include "transforms/transform.h"
 #include "raw_fast.h"
 #include "util.h"
 
@@ -128,11 +129,16 @@ inline int run_thumbnail(const Request &r) {
   // Fast path: embedded JPEG preview (full demosaic is 7-30s). Falls
   // back to full decode when there is no usable preview (tiny thumbs,
   // bitmap, non-RAW). Slow path below keeps the exact same contract.
+  // Edit edits run after the resize (radii are output pixels); metadata
+  // keep=icc,gainmap is unchanged so UHDR thumbs stay UHDR.
   {
     VImage fast;
     VipsInteresting fast_crop =
         (r.crop == "none") ? VIPS_INTERESTING_NONE : interesting;
     if (try_raw_thumbnail_fast(r.input, r.width, r.height, fast_crop, &fast)) {
+      if (!r.edits.empty()) {
+        fast = apply_transforms(fast, r.edits);
+      }
       save_image(fast, r.output, r.quality, true, r.to_stdout);
       print_result_info(image_info_json(fast, r.input, r.output));
       return 0;
@@ -154,6 +160,9 @@ inline int run_thumbnail(const Request &r) {
                                           ->set("no_rotate", false));
 
   // Thumbnails strip metadata (convert preserves it).
+  if (!r.edits.empty()) {
+    im = apply_transforms(im, r.edits);
+  }
   save_image(im, r.output, r.quality, true, r.to_stdout);
 
   // Report OUTPUT dims (free from `im`).
@@ -162,10 +171,15 @@ inline int run_thumbnail(const Request &r) {
   return 0;
 }
 
-/// convert: full decode, then save (file or stdout, no resize).
+/// convert: full decode, optional edit edits, then save (file or stdout).
 inline int run_convert(const Request &r) {
   // Full decode (no shrink-on-load fast path).
   VImage im = VImage::new_from_file(r.input.c_str());
+
+  // Edits run on the full-res pixels before saving.
+  if (!r.edits.empty()) {
+    im = apply_transforms(im, r.edits);
+  }
 
   // Never strip: preserve EXIF/metadata.
   save_image(im, r.output, r.quality, false, r.to_stdout);

@@ -30,12 +30,21 @@ Keep `src/version.h` (`kPreviewBuild`) on the same trailing number —
 | `fetch-upstream.sh` | Overlay upstream `build.sh`/`build`/`platforms` at pin (CI + local) |
 | `build-deps-only.sh` | Upstream `posix.sh` minus Cleanup tail (copy, unmodified) |
 | `build-camera-extras.sh` | Delta static deps + `libheif`/`libvips` rebuild + `-static` CLI link |
-| `src/preview.cc` + `src/{protocol,image,usage,util}.h` + `src/json.hpp` | JSON-stdin CLI (`info \| thumbnail \| convert` via `{"cmd":...}` on stdin; saver from output ext, `"stdout":true` streams) + vendored nlohmann/json 3.11.3 |
+| `src/preview.cc` + `src/{protocol,image,usage,util,transforms/*}.h` + `src/json.hpp` | JSON-stdin CLI (`info \| thumbnail \| convert` via `{"cmd":...}` on stdin; saver from output ext, `"stdout":true` streams; `"edits"` ordered pixel edits) + vendored nlohmann/json 3.11.3 |
 | `.github/workflows/build.yml` | 2-job matrix (musl x64/arm64), `v*` tag → release |
 
 `build-deps-only.sh` stops before upstream's
 `rm -rf $TARGET/lib/{pkgconfig,cmake,...}` so `.pc` + CMake metadata survive
 for the static rebuilds. Upstream files are only ever read.
+
+## Editor (`editor/`)
+
+Headless WebGL preview library (`@radialapps/memories-vips-editor`, pure TS,
+zero deps): takes a caller canvas, renders an ordered edit list, and
+serializes the same list as JSON. The CLI applies it via `"edits"` on
+`convert`/`thumbnail` — same pixels the canvas showed (ICC + gainmap
+preserved). See `editor/README.md`; demo via
+`cd editor && npm install && npm run dev`.
 
 ## Build
 
@@ -60,9 +69,3 @@ ARM64: same with `linux-musl-arm64` (native runner, or `--platform linux/arm64` 
 - CLI: `c++ preview.cc $(pkg-config --libs --static vips-cpp)` closed in
   `--start-group/--end-group -lz`, linked `-static`; build gates on
   `readelf -d` showing no `NEEDED`.
-
-## License note
-
-Per PLAN: ignored — consumers are AGPL3. The static binary bundles
-GPL (`x265`), LGPL, BSD, MIT and Apache-2.0 code. `versions.json` in each
-tarball records exact versions.

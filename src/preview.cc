@@ -4,9 +4,11 @@
 //   usage.h    — help text (raw string, one source of protocol docs).
 //   util.h     — shared string helpers.
 //   protocol.h — stdin JSON parsing/validation (Request).
+//   transforms/protocol.h — parse "edits" into concrete Transforms.
+//   transforms/ — Transform base class + one header per transform.
 //   raw_fast.h — RAW embedded-JPEG fast path for thumbnails (LibRaw).
 //   version.h  — build counter (matches release tag suffix).
-//   image.h    — libvips ops (save by extension, stream to file/stdout).
+//   image.h    — libvips edits (save by extension, stream to file/stdout).
 //   json.hpp   — vendored nlohmann/json (header-only, no new link deps).
 //
 // The build links this file alone (-static); the headers above keep that

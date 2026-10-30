@@ -17,13 +17,36 @@ inline constexpr const char kUsage[] = R"USAGE(usage: echo '<json>' | vips-previ
 Commands — send exactly one JSON object on stdin:
   {"cmd":"info","input":"INPUT"}
   {"cmd":"thumbnail","input":"INPUT","output":"OUTPUT","stdout":false,
-   "width":512,"height":512,"crop":"attention|none|low|high","quality":80}
+   "width":512,"height":512,"crop":"attention|none|low|high","quality":80,
+   "edits":[...]}
   {"cmd":"convert","input":"INPUT","output":"OUTPUT","stdout":false,
-   "quality":90}
+   "quality":90,"edits":[...]}
 
   info       print image metadata (width, height, bands, ...) as JSON on fd 3
-  thumbnail  resize/crop to WIDTH x HEIGHT (default 512 x 512), save to OUTPUT
-  convert    re-encode INPUT to OUTPUT without resizing
+  thumbnail  resize/crop to WIDTH x HEIGHT (default 512 x 512), then apply
+    "edits" (below), save to OUTPUT
+  convert    apply "edits" (below) to INPUT at full resolution, re-encode
+    to OUTPUT
+
+  Edits (thumbnail + convert): ordered array of pixel edits — the same list
+  the editor canvas previews. Missing numerics default to no-change unless
+  noted. Edits run after thumbnail resize (blur/sharpen radii are output
+  pixels) and never drop ICC/gainmap: UHDR outputs stay UHDR.
+
+    {"edit":"brightnessContrast","brightness":0,"contrast":0}  -1..1 each
+    {"edit":"exposure","stops":0}                              -5..5 stops, gain 2^stops
+    {"edit":"hueSaturation","hue":0,"saturation":0}            -1..1 each
+    {"edit":"sepia","amount":1}                                0..1 (default full)
+    {"edit":"vibrance","amount":0}                             -1..1
+    {"edit":"grayscale"}                                       channel average
+    {"edit":"invert"}                                          1 - pixel
+    {"edit":"blur","radius":0}                                 gaussian px, 0..100, 0 skips
+    {"edit":"sharpen","radius":2,"amount":0.5}                 radius 0..50, amount 0..5
+    {"edit":"vignette","size":0.5,"amount":0.5}                0..1 each (edge darkening)
+
+  Example:
+    echo '{"cmd":"convert","input":"in.jpg","output":"out.jpg",
+           "edits":[{"edit":"sepia","amount":0.5}]}' | vips-preview 3>info.json
 
 Options:
   -h, --help     show this help and exit
