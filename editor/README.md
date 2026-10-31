@@ -73,25 +73,28 @@ off, normalized to 0..1 float alongside, reattached. Everything agrees to
 float precision (±1 LSB after quantize), including `blur`/`sharpen` (both
 sides convolve the same discrete kernel — `sigma=radius/2`,
 `half=min(15,max(1,ceil(2σ)))`, clamp edges — via two separable passes).
+Edits address the upright image: EXIF orientation is baked in first (the
+browser applies it too, so crop fractions mean what the canvas showed).
 Thumbnail edits run **after** resize (radii are output pixels). The preview
 downscales sources larger than 2048px and scales `blur`/`sharpen` radii by
-the working/native ratio, so it shows the same *relative* blur as the
-full-res VIPS output. UHDR ICC+gainmap pass through untouched (gainmap is
-not re-derived). `rotate` by
-a non-90 angle appends a transparent alpha band (corners + fringes); 90°
+the working/native ratio, so it shows the same _relative_ blur as the
+full-res VIPS output (up to the 31-tap cap, which is in working pixels on each
+side: past a native radius of ~15 the preview blurs more than VIPS). UHDR
+ICC+gainmap survive: pixel edits leave the gainmap as is (it is not
+re-derived), `crop`/`rotate` apply to it too. `rotate` by a non-90 angle appends a transparent alpha band (corners + fringes); 90°
 multiples stay exact with no band change.
 
-| edit                    | params                                 | VIPS                           |
-| ----------------------- | -------------------------------------- | ------------------------------ |
-| `brightnessContrast`    | `brightness`, `contrast` −1..1         | `linear(mult, bias)`           |
-| `exposure`              | `stops` −5..5                          | `linear(2^stops)`              |
-| `hueSaturation`         | `hue`, `saturation` −1..1              | fused 3×3 (≡ `recomb`)         |
-| `sepia`                 | `amount` 0..1                          | same matrix, clipped at cast   |
-| `vibrance` / `vignette` | `amount` −1..1 / `size`, `amount` 0..1 | identical CPU loop             |
-| `grayscale` / `invert`  | —                                      | `(r+g+b)/3` / `linear(-1, +1)` |
-| `blur` / `sharpen`      | `radius` 0..100 / +`amount` 0..5       | shared kernel + `convsep` (mix)|
-| `crop`                  | `x`,`y`,`width`,`height` 0..1 fractions| `extract_area` (rounded+clamped)|
-| `rotate`                | `angle` −180..180 (clockwise °)        | `rot()` @90s, else `rotate()` |
+| edit                    | params                                  | VIPS                             |
+| ----------------------- | --------------------------------------- | -------------------------------- |
+| `brightnessContrast`    | `brightness`, `contrast` −1..1          | `linear(mult, bias)`             |
+| `exposure`              | `stops` −5..5                           | `linear(2^stops)`                |
+| `hueSaturation`         | `hue`, `saturation` −1..1               | fused 3×3 (≡ `recomb`)           |
+| `sepia`                 | `amount` 0..1                           | same matrix, clipped at cast     |
+| `vibrance` / `vignette` | `amount` −1..1 / `size`, `amount` 0..1  | identical CPU loop               |
+| `grayscale` / `invert`  | —                                       | `(r+g+b)/3` / `linear(-1, +1)`   |
+| `blur` / `sharpen`      | `radius` 0..100 / +`amount` 0..5        | shared kernel + `convsep` (mix)  |
+| `crop`                  | `x`,`y`,`width`,`height` 0..1 fractions | `extract_area` (rounded+clamped) |
+| `rotate`                | `angle` −180..180 (clockwise °)         | `rot()` @90s, else `rotate()`    |
 
 Excluded (no clean VIPS mapping): `denoise`, `noise`, `curves`,
 `lensBlur`/`tiltShift`/`zoomBlur`, halftones, warps.

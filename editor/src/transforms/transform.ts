@@ -3,8 +3,8 @@
 // A transform is one named pixel edit (brightnessContrast, sepia, ...).
 // The pipeline (pipeline.ts) stays generic: it looks the transform up by
 // `edit.edit` in the registry (transforms/index.ts), normalizes params
-// through it, and calls apply(). The VIPS side mirrors this shape with an
-// `Edit` base class plus one header per transform (src/edits/).
+// through it, and calls apply(). The VIPS side mirrors this shape with a
+// `Transform` base class plus one header per transform (src/transforms/).
 import type { EditName } from '../types.js';
 
 export interface Target {
@@ -92,10 +92,13 @@ export function setFloatUniform(
   if (u) gl.uniform1f(u, value);
 }
 
-/** Lookup helper: unknown runtime names yield undefined (guarded by callers). */
+/** Unknown runtime names (including Object.prototype keys) yield undefined. */
 export function lookup(
   registry: Record<EditName, Transform<string, object>>,
-  name: string,
+  name: unknown,
 ): Transform<string, object> | undefined {
-  return (registry as Record<string, Transform<string, object> | undefined>)[name];
+  if (typeof name !== 'string' || !Object.prototype.hasOwnProperty.call(registry, name)) {
+    return undefined;
+  }
+  return registry[name as EditName];
 }

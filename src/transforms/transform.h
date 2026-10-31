@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,63 +36,94 @@ class Transform {
 
 using TransformPtr = std::unique_ptr<Transform>;
 
+/// Mean of the RGB bands, replicated to 3 bands.
+inline VImage channel_average(VImage im) {
+  VImage avg = (im[0] + im[1] + im[2]) / 3.0;
+  return avg.bandjoin(avg).bandjoin(avg);
+}
+
+/// Apply a 3x3 colour matrix as band arithmetic (== recomb).
+inline VImage color_matrix(VImage im, const double (&m)[3][3]) {
+  VImage r = im[0], g = im[1], b = im[2];
+  VImage out_r = r * m[0][0] + g * m[0][1] + b * m[0][2];
+  VImage out_g = r * m[1][0] + g * m[1][1] + b * m[1][2];
+  VImage out_b = r * m[2][0] + g * m[2][1] + b * m[2][2];
+  return out_r.bandjoin(out_g).bandjoin(out_b);
+}
+
 /// Copy every metadata field from @p src to @p dst (fresh images from
-/// new_from_memory_copy carry none: no icc-profile-data, no gainmap-data,
-/// no EXIF). Dims/format match by construction, so structural fields
-/// round-trip harmlessly; blobs and params come along, preserving the
-/// keep=icc,gainmap save contract and convert's metadata preservation.
-inline void graft_image_fields(VImage dst, VImage src) {
+/// new_from_memory carry none: no icc-profile-data, no gainmap-data, no
+/// EXIF), preserving the keep=icc,gainmap save contract and convert's
+/// metadata preservation. Structural fields are header struct members that
+/// vips_image_set() can't reach, so resolution is restored by the copy().
+inline VImage graft_image_fields(VImage dst, VImage src) {
+  VImage out = dst.copy(VImage::option()
+                            ->set("xres", src.xres())
+                            ->set("yres", src.yres())
+                            ->set("interpretation", (int)src.interpretation()));
   gchar **fields = vips_image_get_fields(src.get_image());
-  if (!fields) return;
+  if (!fields) return out;
   for (gchar **p = fields; *p; p++) {
     GValue value = G_VALUE_INIT;
     if (vips_image_get(src.get_image(), *p, &value)) continue;
-    vips_image_set(dst.get_image(), *p, &value);
+    vips_image_set(out.get_image(), *p, &value);
     g_value_unset(&value);
   }
   g_strfreev(fields);
+  return out;
 }
 
 /// Per-pixel CPU pass over a 3-band FLOAT 0..1 image (for transforms whose
 /// math is per-pixel nonlinear or spatial and has no direct VIPS primitive).
-/// The returned image owns its own copy; the scratch buffer is freed here.
-/// Metadata is grafted from the input (fresh memory images carry none).
+/// Renders into one private buffer, edited in place and handed to the result.
 inline VImage transform_cpu_map(
     VImage im, const std::function<void(float *, int, int)> &fn) {
-  VImage mem = im.copy_memory();
-  size_t n = 0;
-  void *buf = mem.write_to_memory(&n);
-  if (!buf) throw std::runtime_error("transform: write_to_memory failed");
-  int w = mem.width();
-  int h = mem.height();
-  if (mem.format() != VIPS_FORMAT_FLOAT || mem.bands() != 3) {
-    g_free(buf);
+  if (im.format() != VIPS_FORMAT_FLOAT || im.bands() != 3)
     throw std::runtime_error("transform: expected 3-band float image");
-  }
-  size_t expect = (size_t)w * (size_t)h * 3u * sizeof(float);
-  if (n < expect) {
-    g_free(buf);
-    throw std::runtime_error("transform: short memory buffer");
-  }
+  const int w = im.width(), h = im.height();
+  size_t n = 0;
+  void *buf = im.write_to_memory(&n);
   fn((float *)buf, w, h);
   VImage out =
-      VImage::new_from_memory_copy(buf, n, w, h, 3, VIPS_FORMAT_FLOAT);
-  g_free(buf);
-  graft_image_fields(out, im);
+      VImage::new_from_memory_steal(buf, n, w, h, 3, VIPS_FORMAT_FLOAT);
+  return graft_image_fields(out, im);
+}
+
+/// The image's gainmap (decompressed on demand), or an empty VImage.
+inline VImage get_gainmap(VImage im) {
+  VipsImage *gainmap = vips_image_get_gainmap(im.get_image());
+  return gainmap ? VImage(gainmap) : VImage();
+}
+
+/// Bake EXIF orientation into the pixels so edits address the upright image
+/// the editor canvas showed. autorot() ignores the attached gainmap (it
+/// carries no orientation of its own), so rotate that the same way here.
+inline VImage upright(VImage im) {
+  if (!im.get_typeof(VIPS_META_ORIENTATION)) return im;
+  const int orientation = im.get_int(VIPS_META_ORIENTATION);
+  VImage out = im.autorot();
+  if (VImage gainmap = get_gainmap(im); gainmap.get_image()) {
+    gainmap = gainmap.copy();
+    gainmap.set(VIPS_META_ORIENTATION, orientation);
+    vips_image_set_image(out.get_image(), "gainmap",
+                         gainmap.autorot().get_image());
+  }
   return out;
 }
 
 /// Run an ordered transform list: normalize once, apply each in order,
-/// clip back to uchar once. Callers skip the call when the list is empty.
+/// clip back to uchar once. No-op on an empty list.
 ///
-/// Alpha is normalized to 0..1 FLOAT alongside RGB (same per-depth scale)
-/// so geometric edits can join and resample RGBA consistently; pixel edits
-/// still leave it untouched and it is quantized back to uchar once at the
-/// end. A 3-band rotate by a non-90 angle appends a transparent alpha band
-/// (corners + fringes); otherwise band flow is unchanged.
+/// Alpha is normalized to 0..1 FLOAT alongside RGB so geometric edits can
+/// join and resample RGBA consistently; pixel edits leave it untouched and
+/// it is quantized back to uchar once at the end. A 3-band rotate by a
+/// non-90 angle appends a transparent alpha band (corners + fringes);
+/// otherwise band flow is unchanged. Geometric edits also apply to the
+/// gainmap, which would otherwise no longer line up with the base image.
 inline VImage apply_transforms(VImage im,
                                const std::vector<TransformPtr> &transforms) {
   if (transforms.empty()) return im;
+  im = upright(im);
 
   // Decode packed codings first: RAD (Radiance RGBE) reports 4 bands but
   // the shared-exponent band can't be extracted or split as alpha.
@@ -104,21 +136,29 @@ inline VImage apply_transforms(VImage im,
   }
 
   // Normalize to 3-band float 0..1 sRGB, splitting alpha first.
-  // - CMYK band 3 is K (black), not alpha: convert the whole image.
+  // - CMYK band 3 is K (black), not alpha: convert before looking for alpha.
   // - Otherwise split the trailing alpha band when present (any depth),
   //   so gray+alpha and RGBA share one path.
   // - Anything non-sRGB (scRGB HDR, LAB, ...) goes through colourspace;
   //   4-band non-alpha that isn't CMYK is rejected rather than
   //   misinterpreted as RGBA.
-  VImage alpha;
-  bool has_alpha = false;
+  if (im.interpretation() == VIPS_INTERPRETATION_CMYK)
+    im = im.colourspace(VIPS_INTERPRETATION_sRGB);
+
   VImage rgb = im;
-  if (im.interpretation() == VIPS_INTERPRETATION_CMYK) {
-    rgb = im.colourspace(VIPS_INTERPRETATION_sRGB);
-  } else if (im.has_alpha()) {
-    int n = im.bands();
-    alpha = im.extract_band(n - 1);
-    has_alpha = true;
+  VImage alpha_f;
+  bool has_alpha = im.has_alpha();
+  if (has_alpha) {
+    // Scale from the source's own range: colourspace() below may change the
+    // depth of the color bands (RGB16 -> uchar), but never of this split band.
+    const int n = im.bands();
+    const double max_alpha =
+        im.format() == VIPS_FORMAT_USHORT
+            ? 65535.0
+            : vips_interpretation_max_alpha(im.interpretation());
+    alpha_f = im.extract_band(n - 1)
+                  .cast(VIPS_FORMAT_FLOAT)
+                  .linear(1.0 / max_alpha, 0.0);
     rgb = im.extract_band(0, VImage::option()->set("n", n - 1));
   }
   if (rgb.bands() == 1) {
@@ -133,60 +173,64 @@ inline VImage apply_transforms(VImage im,
   // already nominal (e.g. scRGB HDR); integer depths scale by type max.
   // Anything else is rejected rather than silently mis-scaled.
   VImage f;
-  double alpha_scale = 1.0;  // per-depth 0..1 scale, shared with alpha below
   switch (rgb.format()) {
     case VIPS_FORMAT_UCHAR:
       f = rgb.cast(VIPS_FORMAT_FLOAT).linear(1.0 / 255.0, 0.0);
-      alpha_scale = 1.0 / 255.0;
       break;
     case VIPS_FORMAT_USHORT:
       f = rgb.cast(VIPS_FORMAT_FLOAT).linear(1.0 / 65535.0, 0.0);
-      alpha_scale = 1.0 / 65535.0;
       break;
     case VIPS_FORMAT_FLOAT:
     case VIPS_FORMAT_DOUBLE:
       f = rgb.cast(VIPS_FORMAT_FLOAT);
-      alpha_scale = 1.0;
       break;
     default:
       throw std::runtime_error(
           "transform: unsupported format for edits (uchar/ushort/float only)");
   }
-  VImage alpha_f;
-  if (has_alpha) alpha_f = alpha.cast(VIPS_FORMAT_FLOAT).linear(alpha_scale, 0.0);
+
+  VImage gainmap;
+  bool gainmap_loaded = false;
 
   for (const auto &t : transforms) {
     if (!t->is_geometric()) {
       f = t->apply(f);
       continue;
     }
-    // Geometric: resample RGB and alpha together (joined 0..1 FLOAT) so
-    // interpolation and output dims agree. A 3-band non-90 rotate appends
-    // a transparent band, adopted as the new alpha plane.
+
+    // Resample RGB and alpha together (joined 0..1 FLOAT) so interpolation
+    // and output dims agree. A 3-band non-90 rotate returns 4 bands: its
+    // transparent band is adopted as the new alpha plane.
+    VImage out = t->apply(has_alpha ? f.bandjoin(alpha_f) : f);
+    has_alpha = out.bands() == 4;
     if (has_alpha) {
-      VImage out = t->apply(f.bandjoin(alpha_f));
-      int nb = out.bands();
-      if (nb < 2)
-        throw std::runtime_error("transform: geometric edit lost bands");
-      alpha_f = out.extract_band(nb - 1);
-      f = out.extract_band(0, VImage::option()->set("n", nb - 1));
+      alpha_f = out.extract_band(3);
+      f = out.extract_band(0, VImage::option()->set("n", 3));
     } else {
-      VImage out = t->apply(f);
-      if (out.bands() == f.bands()) {
-        f = out;
-      } else {
-        int nb = out.bands();
-        alpha_f = out.extract_band(nb - 1);
-        f = out.extract_band(0, VImage::option()->set("n", nb - 1));
-        has_alpha = true;
-      }
+      f = out;
+    }
+
+    if (!gainmap_loaded) {
+      gainmap = get_gainmap(im);
+      gainmap_loaded = true;
+    }
+    if (gainmap.get_image()) {
+      // Crop fractions and rotation angles are resolution independent. The
+      // alpha band a non-90 rotate adds is meaningless here: drop it again.
+      VImage mapped = t->apply(gainmap);
+      if (mapped.bands() != gainmap.bands())
+        mapped =
+            mapped.extract_band(0, VImage::option()->set("n", gainmap.bands()));
+      gainmap = mapped.cast(gainmap.format());
     }
   }
 
-  // Single clip back to uchar, reattach untouched alpha (quantized to
-  // 8-bit to match the output depth).
+  // Single clip back to uchar, reattach alpha (quantized to 8-bit to match
+  // the output depth).
   VImage out = f.linear(255.0, 0.0).cast(VIPS_FORMAT_UCHAR);
   if (has_alpha)
     out = out.bandjoin(alpha_f.linear(255.0, 0.0).cast(VIPS_FORMAT_UCHAR));
+  if (gainmap.get_image())
+    vips_image_set_image(out.get_image(), "gainmap", gainmap.get_image());
   return out;
 }

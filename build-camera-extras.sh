@@ -11,30 +11,22 @@ set -euo pipefail
 # static, link preview.cc -static.
 
 # --- versions ---
-if [ -f /packaging/versions.properties ]; then
-  # shellcheck disable=SC1091
-  source /packaging/versions.properties
-fi
-if [ -f /packaging/versions.camera.properties ]; then
-  # shellcheck disable=SC1091
-  source /packaging/versions.camera.properties
-else
-  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  # shellcheck disable=SC1091
-  source "$SCRIPT_DIR/../versions.camera.properties"
-fi
+PACKAGE="${PACKAGE:-/packaging}"
+# shellcheck disable=SC1091
+source "${PACKAGE}/versions.properties"
+# shellcheck disable=SC1091
+source "${PACKAGE}/versions.camera.properties"
 
 : "${PLATFORM:?PLATFORM must be set (linux-musl-x64, linux-musl-arm64)}"
+: "${VERSION_VIPS:?}" "${VERSION_HEIF:?}"
 : "${VERSION_DAV1D:?}" "${VERSION_LIBDE265:?}" "${VERSION_SVT_AV1:?}"
 : "${VERSION_IMATH:?}" "${VERSION_OPENEXR:?}"
 : "${VERSION_LIBRAW:?}"
 : "${HEIF_WITH_X265:?}" "${HEIF_WITH_LIBDE265:?}" "${HEIF_WITH_AOM_ENCODER:?}" "${HEIF_WITH_AOM_DECODER:?}" "${HEIF_WITH_DAV1D:?}" "${HEIF_WITH_SVTENC:?}"
 
 # --- env (mirror upstream build/posix.sh; tolerate already-set values) ---
-LINUX=true
 DEPS="${DEPS:-/deps}"
 TARGET="${TARGET:-/target}"
-PACKAGE="${PACKAGE:-/packaging}"
 ROOT="${ROOT:-/root}"
 CHOST="${CHOST:-$(gcc -dumpmachine 2>/dev/null || echo "")}"
 FLAGS="${FLAGS:--O3 -fPIC}"
@@ -136,9 +128,7 @@ $CURL "https://github.com/libvips/libvips/releases/download/v${VERSION_VIPS}/vip
 # patches/jpegsave-gainmap-forward.patch once upstream libvips ships HEIC
 # HDR gainmap support natively (heifload + jpegsave forward).
 for _p in heifload-iso21496-gainmap.patch jpegsave-gainmap-forward.patch; do
-  if [ -f "${PACKAGE}/patches/${_p}" ]; then
-    (cd "${DEPS}/vips-static-camera" && patch -p1 < "${PACKAGE}/patches/${_p}")
-  fi
+  (cd "${DEPS}/vips-static-camera" && patch -p1 < "${PACKAGE}/patches/${_p}")
 done
 (cd "${DEPS}/vips-static-camera" && \
   sed -i'.bak' "/subdir('man')/{N;N;N;N;d;}" meson.build && \
@@ -164,7 +154,6 @@ CLI_SRC="${PACKAGE}/src/preview.cc"
 # trail -lz (harmless duplicate when already ordered).
 # -I.../src lets headers in src/transforms/ include siblings (json.hpp, ...)
 # by short name.
-# shellcheck disable=SC2086
 CXX_BIN="${CXX:-c++}"
 # shellcheck disable=SC2086
 "$CXX_BIN" -O3 -fopenmp -I"${PACKAGE}/src" "$CLI_SRC" -o "${TARGET}/bin/vips-preview" \
@@ -184,29 +173,24 @@ file "${TARGET}/bin/vips-preview" || true
 # --- versions.json (upstream tail is skipped, so seed it from both properties files) ---
 # Text/SVG stack (cairo/pango/etc.) is stripped from the build, so drop those
 # pins even though they remain in upstream versions.properties.
-python3 - "$TARGET/versions.json" <<'EOF'
+python3 - "$TARGET/versions.json" "$PACKAGE" <<'EOF'
 import json, sys
-path = sys.argv[1]
+path, package = sys.argv[1:3]
 dropped = {"cairo", "pango", "pixman", "fribidi", "fontconfig", "freetype", "harfbuzz", "rsvg"}
 data = {}
-for f in ("/packaging/versions.properties", "/packaging/versions.camera.properties"):
-    try:
-        with open(f) as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                k = k.strip()
-                if k == "UPSTREAM_TAG":
-                    data["upstream"] = v.strip()
-                elif k.startswith("VERSION_"):
-                    name = k[len("VERSION_"):].lower()
-                    if name in dropped:
-                        continue
-                    data[name] = v.strip()
-    except FileNotFoundError:
-        pass
+for f in ("versions.properties", "versions.camera.properties"):
+    with open(f"{package}/{f}") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = (s.strip() for s in line.split("=", 1))
+            if k == "UPSTREAM_TAG":
+                data["upstream"] = v
+            elif k.startswith("VERSION_"):
+                name = k[len("VERSION_"):].lower()
+                if name not in dropped:
+                    data[name] = v
 with open(path, "w") as f:
     json.dump(data, f, indent=2, sort_keys=True)
     f.write("\n")

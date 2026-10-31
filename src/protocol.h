@@ -6,8 +6,11 @@
 // them as {"error":...} on fd 3 so image-bytes stdout stays clean.
 #pragma once
 
+#include <climits>
+#include <cmath>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "json.hpp"
 #include "transforms/protocol.h"
@@ -28,7 +31,7 @@ using nlohmann::json;
 /// - crop: attention (default) | none | low | high (thumbnail only).
 /// - quality: thumbnail default 80, convert default 90.
 /// - edits: ordered pixel-edit list applied after decode (thumbnail: after
-///   resize) and before save; see edit.h. Default [] (no-edit).
+///   resize) and before save; see transforms/. Default [] (no-edit).
 struct Request {
   std::string cmd;
   std::string input;
@@ -59,13 +62,16 @@ inline std::string optional_string(const json &j, const char *key,
   return j[key].get<std::string>();
 }
 
-/// Fetch an optional numeric field; returns @p dflt when absent.
-/// Throws if present but not a number.
+/// Fetch an optional integer field; returns @p dflt when absent.
+/// Throws if present but not a number, fractional, or outside int range.
 inline int optional_int(const json &j, const char *key, int dflt) {
   if (!j.contains(key)) return dflt;
   if (!j[key].is_number())
     throw std::runtime_error(std::string("\"") + key + "\" must be a number");
-  return j[key].get<int>();
+  double d = j[key].get<double>();
+  if (d != std::floor(d) || d < INT_MIN || d > INT_MAX)
+    throw std::runtime_error(std::string("\"") + key + "\" must be an integer");
+  return (int)d;
 }
 
 /// Fetch an optional boolean flag; returns @p dflt when absent.
@@ -87,13 +93,13 @@ inline Request parse_request(const json &j) {
 
   // Command decides which fields below are required.
   r.cmd = lower(required_string(j, "cmd"));
-  if (r.cmd == "thumb") r.cmd = "thumbnail"; // historical alias
+  if (r.cmd == "thumb") r.cmd = "thumbnail";  // historical alias
   if (r.cmd != "info" && r.cmd != "thumbnail" && r.cmd != "convert")
     throw std::runtime_error("\"cmd\" must be info|thumbnail|convert");
 
   // Source image; every command needs it.
   r.input = required_string(j, "input");
-  if (r.cmd == "info") return r; // info takes nothing else
+  if (r.cmd == "info") return r;  // info takes nothing else
 
   // Destination filename; its extension picks the saver (no format field).
   r.output = required_string(j, "output");
@@ -101,7 +107,7 @@ inline Request parse_request(const json &j) {
   // Stdout streaming flag; the file is skipped when true.
   r.to_stdout = optional_bool(j, "stdout", false);
 
-  // Convert is decode + re-encode; quality + optional edit edits apply.
+  // Convert is decode + re-encode; quality + optional edits apply.
   if (r.cmd == "convert") {
     r.quality = optional_int(j, "quality", 90);
     r.edits = parse_transforms(j);

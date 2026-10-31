@@ -27,6 +27,8 @@ export interface CropEdit {
 
 type Full = Required<CropEdit>;
 
+const MIN_EXTENT = 1e-4;
+
 /** Pixel rect for the given input size; identical to src/transforms/crop.h. */
 export function cropRect(
   inW: number,
@@ -87,23 +89,12 @@ export class CropTransform implements Transform<'crop', CropEdit> {
   }
 
   public normalize(params: CropEdit): Full {
-    let x = clampf(0, params.x ?? 0, 1);
-    let y = clampf(0, params.y ?? 0, 1);
-    let w = clampf(0, params.width ?? 1, 1);
-    let h = clampf(0, params.height ?? 1, 1);
-    if (!(w > 0)) w = Math.min(1, Math.max(1e-4, 1 - x));
-    else w = Math.min(w, 1 - x);
-    if (!(h > 0)) h = Math.min(1, Math.max(1e-4, 1 - y));
-    else h = Math.min(h, 1 - y);
-    if (!(w > 0)) {
-      w = 1e-4;
-      x = 1 - w;
-    }
-    if (!(h > 0)) {
-      h = 1e-4;
-      y = 1 - h;
-    }
-    return { edit: 'crop', x, y, width: w, height: h };
+    // Keep at least MIN_EXTENT of frame: the renderer rounds that to 1px.
+    const x = clampf(0, params.x ?? 0, 1 - MIN_EXTENT);
+    const y = clampf(0, params.y ?? 0, 1 - MIN_EXTENT);
+    const width = clampf(MIN_EXTENT, params.width ?? 1, 1 - x);
+    const height = clampf(MIN_EXTENT, params.height ?? 1, 1 - y);
+    return { edit: 'crop', x, y, width, height };
   }
 
   public outputDims(inW: number, inH: number, params: Full): { w: number; h: number } {

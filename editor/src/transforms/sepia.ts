@@ -1,4 +1,5 @@
-// sepia.ts — glfx.js sepia port.
+// sepia.ts — glfx.js sepia port, minus its per-channel min(1.0): like the VIPS
+// side, values stay unclipped until the end so later edits see the same input.
 import { clampf } from '../math.js';
 import {
   isNumInRange,
@@ -27,9 +28,9 @@ void main() {
   float r = color.r;
   float g = color.g;
   float b = color.b;
-  color.r = min(1.0, (r * (1.0 - (0.607 * amount))) + (g * (0.769 * amount)) + (b * (0.189 * amount)));
-  color.g = min(1.0, (r * 0.349 * amount) + (g * (1.0 - (0.314 * amount))) + (b * 0.168 * amount));
-  color.b = min(1.0, (r * 0.272 * amount) + (g * 0.534 * amount) + (b * (1.0 - (0.869 * amount))));
+  color.r = (r * (1.0 - (0.607 * amount))) + (g * (0.769 * amount)) + (b * (0.189 * amount));
+  color.g = (r * 0.349 * amount) + (g * (1.0 - (0.314 * amount))) + (b * 0.168 * amount);
+  color.b = (r * 0.272 * amount) + (g * 0.534 * amount) + (b * (1.0 - (0.869 * amount)));
   gl_FragColor = color;
 }
 `;

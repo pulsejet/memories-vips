@@ -1,14 +1,13 @@
 // math.ts — CPU reference for every edit's pixel math.
 //
 // These functions are the single source of truth shared (by port, not by
-// import) with the GLSL in shaders.ts and the libvips code in src/edit.h:
+// import) with the GLSL in transforms/ and the libvips code in src/transforms/:
 //   preview (WebGL)  ==  math.ts  ==  VIPS applier
 // all operate on sRGB-encoded 0..1 floats and apply in array order.
 //
 // glfx.js inspiration: brightnessContrast / hueSaturation / sepia / vibrance /
-// vignette shaders are direct ports of evanw/glfx.js adjust filters (see
-// shaders.ts); the matrix derivations below match those shaders term for term
-// so a VIPS `recomb`/`linear` does exactly what the canvas showed.
+// vignette shaders are direct ports of evanw/glfx.js adjust filters, so a VIPS
+// `linear` or matrix does exactly what the canvas showed.
 
 export function clampf(lo: number, v: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));

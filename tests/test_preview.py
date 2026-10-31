@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -38,7 +39,6 @@ BIN = os.environ.get("VIPS_PREVIEW_BIN", "")
 def find_binary() -> str:
     cands = [
         BIN,
-        "/tmp/opencode/testbins/v8.18.5-2/vips-preview",
         "/tmp/opencode/testbins/vips-preview",
         os.path.join(HERE, "..", "vips-preview"),
         shutil.which("vips-preview") or "",
@@ -47,8 +47,7 @@ def find_binary() -> str:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
     raise unittest.SkipTest(
-        "vips-preview binary not found; set VIPS_PREVIEW_BIN "
-        "(e.g. /tmp/opencode/testbins/v8.18.5-2/vips-preview)"
+        "vips-preview binary not found; set VIPS_PREVIEW_BIN"
     )
 
 
@@ -364,6 +363,27 @@ class TestProtocolValidation(unittest.TestCase):
         self.assertEqual(out, b"")
         assert_error_json(self, err, "")
 
+    def test_invalid_utf8_stdin_is_json_error(self):
+        # The parser quotes the raw bytes; emitting them must not abort.
+        rc, out, err = run_raw(b'{"cmd":"\xff"}')
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, b"")
+        assert_error_json(self, err, "invalid JSON")
+
+    def test_integer_fields_reject_fraction_and_overflow(self):
+        for width in (32.5, 1e30, 2**40):
+            with self.subTest(width=width), tempfile.TemporaryDirectory() as td:
+                rc, _, err = run_json(
+                    {
+                        "cmd": "thumbnail",
+                        "input": data_path(DRIVER),
+                        "output": os.path.join(td, "t.jpg"),
+                        "width": width,
+                    }
+                )
+                self.assertEqual(rc, 1)
+                assert_error_json(self, err, '"width" must be an integer')
+
     def test_svg_input_unsupported(self):
         # Text/SVG stack removed (no pangocairo/rsvg): SVG has no loader.
         # Self-contained: no fixture file needed.
@@ -376,6 +396,48 @@ class TestProtocolValidation(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(out, b"")
         assert_error_json(self, err, "")
+
+
+class TestJsonFallback(unittest.TestCase):
+    def test_info_reaches_stderr_when_fd3_closed(self):
+        # ultra-hdr.jpg: the loader keeps its input open, landing on fd 3.
+        for name in (DRIVER, "ultra-hdr.jpg"):
+            with self.subTest(name=name):
+                p = subprocess.run(
+                    [VIPS_PREVIEW],
+                    input=json.dumps({"cmd": "info", "input": data_path(name)}).encode(),
+                    capture_output=True,
+                )
+                self.assertEqual(p.returncode, 0)
+                self.assertIn("width", json.loads(p.stderr))
+
+
+class TestStdoutSocket(unittest.TestCase):
+    """stdout may be a socket (Node's child_process), which can't be reopened."""
+
+    def test_every_saver_streams_to_a_socket(self):
+        for ext in (".jpg", ".webp", ".avif", ".png"):
+            with self.subTest(ext=ext):
+                ours, theirs = socket.socketpair()
+                req = {
+                    "cmd": "thumbnail",
+                    "input": data_path(DRIVER),
+                    "output": "out" + ext,
+                    "stdout": True,
+                    "width": 32,
+                    "height": 32,
+                }
+                with ours, theirs:
+                    p = subprocess.run(
+                        [VIPS_PREVIEW],
+                        input=json.dumps(req).encode(),
+                        stdout=theirs.fileno(),
+                        stderr=subprocess.PIPE,
+                    )
+                    self.assertEqual(p.returncode, 0, p.stderr[:300])
+                    theirs.close()
+                    blob = b"".join(iter(lambda: ours.recv(65536), b""))
+                check_magic(blob, ext)
 
 
 class TestInfo(unittest.TestCase):

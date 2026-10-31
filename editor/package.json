@@ -1,7 +1,7 @@
 {
   "name": "@radialapps/memories-vips-editor",
   "version": "0.1.2",
-  "description": "Headless WebGL preview library for vips-static edits. Renders an ordered op list on a caller-provided canvas; serializes the same list as JSON for the vips-preview CLI (convert/thumbnail ... \"ops\": [...]).",
+  "description": "Headless WebGL preview library for vips-static edits. Renders an ordered edit list on a caller-provided canvas; serializes the same list as JSON for the vips-preview CLI (convert/thumbnail ... \"edits\": [...]).",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

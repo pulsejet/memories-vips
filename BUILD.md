@@ -28,7 +28,7 @@ into the worktree (all git-ignored). Re-run it after changing
 docker build --pull -t vips-dev-linux-musl-x64 platforms/linux-musl-x64
 docker run --rm -v "$PWD:/packaging" vips-dev-linux-musl-x64 \
   sh -c "/packaging/build-deps-only.sh && /packaging/build-camera-extras.sh"
-# → vips-cli-linux-musl-x64-static.tar.gz (~13 MB)
+# → vips-cli-linux-musl-x64-static.tar.gz (~11 MB)
 ```
 
 Takes ~50 min on a fast machine. CI renames the tarball to
@@ -36,7 +36,7 @@ Takes ~50 min on a fast machine. CI renames the tarball to
 
 ## 2b. Build aarch64
 
-On an ARM64 host (or the `ubuntu-24.04-arm` CI runner), same as above with
+On an ARM64 host (or the `ubuntu-26.04-arm` CI runner), same as above with
 `linux-musl-arm64` (takes ~1 h natively).
 
 On x86_64, enable emulation first (one-time, needs privileges), then build
@@ -70,8 +70,7 @@ echo '{"cmd":"thumbnail","input":"/tmp/in.ppm","output":"t.jpg","stdout":true}' 
                                                        # bytes on stdout, JSON on fd 3
 ```
 
-AVIF encode must succeed; HEIC encode must fail cleanly (no x265).
-Upstream binaries only manage AV1. The aarch64
+AVIF encode must succeed; HEIC encode must fail cleanly (no x265). The aarch64
 binary can be smoke-tested the same way on x86_64 once binfmt is installed
 (it executes transparently under QEMU).
 

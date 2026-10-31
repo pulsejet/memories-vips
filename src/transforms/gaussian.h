@@ -46,5 +46,6 @@ inline VImage gaussian_blur(VImage im, double radius) {
   std::vector<double> w = gaussian_weights(radius);
   int n = (int)w.size();
   VImage mask = VImage::new_matrix(n, 1, w.data(), n);
-  return im.convsep(mask, VImage::option()->set("precision", VIPS_PRECISION_FLOAT));
+  return im.convsep(mask,
+                    VImage::option()->set("precision", VIPS_PRECISION_FLOAT));
 }

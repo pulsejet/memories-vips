@@ -30,13 +30,25 @@ function showImage(source: TexImageSource, label: string): void {
   }
 }
 
-function refresh() {
+/** Re-render the preview and everything derived from the edit list. */
+function apply() {
   if (!pipeline) return;
   pipeline.setEdits(state.edits);
   const normalized = state.edits.map(normalizeEdit);
-  outEl.textContent = JSON.stringify({ version: 1, edits: normalized }, null, 2);
+  outEl.textContent = JSON.stringify({ version: state.version, edits: normalized }, null, 2);
   metaEl.textContent = `${pipeline.width}x${pipeline.height}, ${state.edits.length} edit(s)`;
+}
+
+function refresh() {
+  apply();
   renderCards();
+}
+
+function moveEdit(from: number, to: number) {
+  if (to < 0 || to >= state.edits.length) return;
+  const [edit] = state.edits.splice(from, 1);
+  state.edits.splice(to, 0, edit as Edit);
+  refresh();
 }
 
 function renderCards() {
@@ -52,23 +64,11 @@ function renderCards() {
     const up = document.createElement('button');
     up.textContent = '↑';
     up.title = 'move up';
-    up.onclick = () => {
-      if (i > 0) {
-        const [o] = state.edits.splice(i, 1);
-        state.edits.splice(i - 1, 0, o as Edit);
-        refresh();
-      }
-    };
+    up.onclick = () => moveEdit(i, i - 1);
     const down = document.createElement('button');
     down.textContent = '↓';
     down.title = 'move down';
-    down.onclick = () => {
-      if (i < state.edits.length - 1) {
-        const [o] = state.edits.splice(i, 1);
-        state.edits.splice(i + 1, 0, o as Edit);
-        refresh();
-      }
-    };
+    down.onclick = () => moveEdit(i, i + 1);
     const del = document.createElement('button');
     del.textContent = '✕';
     del.title = 'remove';
@@ -95,12 +95,7 @@ function renderCards() {
       slider.oninput = () => {
         (edit as unknown as Record<string, number>)[p.key] = Number(slider.value);
         val.textContent = Number(slider.value).toFixed(2);
-        pipeline?.setEdits(state.edits);
-        outEl.textContent = JSON.stringify(
-          { version: 1, edits: state.edits.map(normalizeEdit) },
-          null,
-          2,
-        );
+        apply();
       };
       row.append(name, slider, val);
       card.append(row);
@@ -109,9 +104,11 @@ function renderCards() {
   });
 }
 
+const addSelect = document.getElementById('addedit') as HTMLSelectElement;
+addSelect.append(...Object.keys(TRANSFORMS).map((name) => new Option(name)));
+
 (document.getElementById('add') as HTMLButtonElement).onclick = () => {
-  const sel = document.getElementById('addedit') as HTMLSelectElement;
-  const name = sel.value as EditName;
+  const name = addSelect.value as EditName;
   state.edits.push(normalizeEdit({ edit: name } as Edit));
   refresh();
 };

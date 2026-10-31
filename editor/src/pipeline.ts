@@ -13,8 +13,9 @@
 // array (normalized) is what vips-preview accepts as "edits".
 import { BLIT_FRAG, COPY_FRAG, GAUSS_FRAG, VERT } from './shaders.js';
 import { TRANSFORMS, normalizeEdit } from './transforms/index.js';
+import { stateToJSON } from './transforms/state.js';
 import type { RenderContext, Target, UniformSetter, ExtraTex } from './transforms/transform.js';
-import { emptyState, type Edit, type EditState } from './types.js';
+import { EDIT_STATE_VERSION, emptyState, type Edit, type EditState } from './types.js';
 
 export class EditPipeline {
   private gl: WebGLRenderingContext;
@@ -88,7 +89,7 @@ export class EditPipeline {
 
   /** Replace the whole edit list (normalizing each edit) and re-render. */
   public setEdits(edits: Edit[]): void {
-    this.state = { version: 1, edits: edits.map(normalizeEdit) };
+    this.state = { version: EDIT_STATE_VERSION, edits: edits.map(normalizeEdit) };
     this.render();
   }
 
@@ -119,7 +120,7 @@ export class EditPipeline {
 
   /** Canonical JSON state for the VIPS side. */
   public toJSON(): string {
-    return JSON.stringify({ version: 1 as const, edits: this.state.edits.map(normalizeEdit) });
+    return stateToJSON(this.state);
   }
 
   /**
@@ -189,7 +190,7 @@ export class EditPipeline {
     this.imgH = h;
     this.outW = w;
     this.outH = h;
-    this.resScale = dims.w > 0 ? w / dims.w : 1;
+    this.resScale = w / dims.w;
     for (const t of [this.src, this.ping, this.pong, this.extra]) {
       if (t) {
         gl.deleteTexture(t.tex);
@@ -406,9 +407,22 @@ export class EditPipeline {
     setUniforms?: UniformSetter,
     extraTex?: ExtraTex,
   ): void {
+    this.draw(frag, from, to.fb, to.w, to.h, setUniforms, extraTex);
+  }
+
+  /** Render `from` through `frag` into a framebuffer (null = the canvas). */
+  private draw(
+    frag: string,
+    from: Target,
+    fb: WebGLFramebuffer | null,
+    w: number,
+    h: number,
+    setUniforms?: UniformSetter,
+    extraTex?: ExtraTex,
+  ): void {
     const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, to.fb);
-    gl.viewport(0, 0, to.w, to.h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.viewport(0, 0, w, h);
     const prog = this.program(frag);
     gl.useProgram(prog);
     const loc = gl.getAttribLocation(prog, 'aPos');
@@ -466,25 +480,11 @@ export class EditPipeline {
    * unflipped upload.)
    */
   private toCanvas(from: Target): void {
-    const gl = this.gl;
     if (this.outW <= 0 || this.outH <= 0) return;
     if (this.canvas.width !== this.outW || this.canvas.height !== this.outH) {
       this.canvas.width = this.outW;
       this.canvas.height = this.outH;
     }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.outW, this.outH);
-    const prog = this.program(BLIT_FRAG);
-    gl.useProgram(prog);
-    const loc = gl.getAttribLocation(prog, 'aPos');
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, from.tex);
-    const uTex = gl.getUniformLocation(prog, 'texture');
-    if (uTex) gl.uniform1i(uTex, 0);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    gl.disableVertexAttribArray(loc);
+    this.draw(BLIT_FRAG, from, null, this.outW, this.outH);
   }
 }

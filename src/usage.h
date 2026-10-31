@@ -8,7 +8,8 @@
 #include <cstdio>
 
 /// Full CLI help: JSON request shapes, defaults, and the stdout flag.
-inline constexpr const char kUsage[] = R"USAGE(usage: echo '<json>' | vips-preview [OPTION]
+inline constexpr const char kUsage[] =
+    R"USAGE(usage: echo '<json>' | vips-preview [OPTION]
        vips-preview --help
        vips-preview --version
 
@@ -28,10 +29,12 @@ Commands — send exactly one JSON object on stdin:
   convert    apply "edits" (below) to INPUT at full resolution, re-encode
     to OUTPUT
 
-  Edits (thumbnail + convert): ordered array of pixel + geometric edits — the same list
-  the editor canvas previews. Missing numerics default to no-change unless
-  noted. Edits run after thumbnail resize (blur/sharpen radii are output
-  pixels) and never drop ICC/gainmap: UHDR outputs stay UHDR.
+  Edits (thumbnail + convert): ordered array of pixel + geometric edits — the
+  same list the editor canvas previews. Missing numerics default to no-change
+  unless noted. Edits see the upright image (EXIF orientation is baked in
+  first) and run after thumbnail resize (blur/sharpen radii are output pixels).
+  They never drop ICC/gainmap: UHDR outputs stay UHDR, and crop/rotate apply
+  to the gainmap too.
 
     {"edit":"brightnessContrast","brightness":0,"contrast":0}  -1..1 each
     {"edit":"exposure","stops":0}                              -5..5 stops, gain 2^stops
@@ -52,7 +55,7 @@ Commands — send exactly one JSON object on stdin:
 
 Options:
   -h, --help     show this help and exit
-  -V, --version  print the libvips version and exit
+  -V, --version  print {libvips version}-{build} and exit
 
 Streams:
   stdout carries file bytes only: empty when writing OUTPUT files,

@@ -34,8 +34,8 @@ ASSETS = os.path.join(HERE, "parity")
 DEFAULT_BIN = "/tmp/opencode/vips-preview"
 
 
-def run(bin: str, req: dict) -> None:
-    subprocess.run([bin], input=json.dumps(req).encode(), check=True)
+def run(binary: str, req: dict) -> None:
+    subprocess.run([binary], input=json.dumps(req).encode(), check=True)
 
 
 def main() -> None:
@@ -43,7 +43,7 @@ def main() -> None:
     ap.add_argument("--bin", default=None)
     ap.add_argument("--quality", type=int, default=90)
     args = ap.parse_args()
-    bin = args.bin or os.environ.get("VIPS_PREVIEW_BIN", DEFAULT_BIN)
+    binary = args.bin or os.environ.get("VIPS_PREVIEW_BIN", DEFAULT_BIN)
 
     with open(CASES_FILE) as f:
         cases = [(c["id"], c["edits"]) for c in json.load(f)["cases"]]
@@ -51,7 +51,7 @@ def main() -> None:
     os.makedirs(ASSETS, exist_ok=True)
     src = os.path.join(ASSETS, "src.jpg")
     run(
-        bin,
+        binary,
         {
             "cmd": "thumbnail",
             "input": os.path.join(DATA, "ultra-hdr.jpg"),
@@ -65,7 +65,7 @@ def main() -> None:
     for slug, edits in cases:
         out = os.path.join(ASSETS, f"vips-{slug}.jpg")
         run(
-            bin,
+            binary,
             {
                 "cmd": "convert",
                 "input": src,

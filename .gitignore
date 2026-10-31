@@ -9,7 +9,7 @@ check-latest-versions.sh
 /target/
 /deps/
 __pycache__/
-build-full.log
+build-full*.log
 /editor/node_modules/
 /editor/dist/
 /editor/dist-demo/

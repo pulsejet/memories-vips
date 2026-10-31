@@ -45,6 +45,13 @@ describe('cropRect (mirrors src/transforms/crop.h)', () => {
     expect(z.width).toBeGreaterThan(0);
     expect(z.height).toBeGreaterThan(0);
   });
+  it('normalize shrinks towards zero instead of snapping back to full frame', () => {
+    expect(crop({ edit: 'crop', x: 0.2, width: 0 }).width).toBeLessThan(0.01);
+    const edge = crop({ edit: 'crop', x: 1, y: 1 });
+    expect(edge.x + edge.width).toBeLessThanOrEqual(1);
+    expect(edge.width).toBeGreaterThan(0);
+    expect(normalizeEdit(edge)).toEqual(edge);
+  });
 });
 
 describe('rotate math (mirrors src/transforms/rotate.h)', () => {

@@ -36,14 +36,14 @@ export const TRANSFORMS: Record<EditName, Transform<string, object>> = {
 /** Human-readable problems; empty means the edit is VIPS-appliable. */
 export function validateEdit(edit: Edit): string[] {
   if (typeof edit !== 'object' || edit === null) return ['edit must be an object'];
-  const t = lookup(TRANSFORMS, (edit as { edit?: unknown }).edit as string);
-  if (!t) return [`unknown edit ${(edit as { edit?: unknown }).edit as string}`];
+  const t = lookup(TRANSFORMS, edit.edit);
+  if (!t) return [`unknown edit ${String(edit.edit)}`];
   return t.validate(edit);
 }
 
 /** Fill defaults + clamp, so serialized JSON always passes validateEdit. */
 export function normalizeEdit(edit: Edit): Edit {
-  const t = lookup(TRANSFORMS, (edit as { edit?: unknown }).edit as string);
-  if (!t) throw new Error(`unknown edit ${(edit as { edit?: unknown }).edit as string}`);
+  const t = lookup(TRANSFORMS, edit.edit);
+  if (!t) throw new Error(`unknown edit ${String(edit.edit)}`);
   return t.normalize(edit) as Edit;
 }

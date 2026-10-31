@@ -28,19 +28,69 @@
 
 using nlohmann::json;
 
+/// Error prefixed with the offending entry, e.g. "edits[2].amount out of
+/// range".
+inline std::runtime_error edit_error(size_t idx, const std::string &msg) {
+  return std::runtime_error("edits[" + std::to_string(idx) + "]" + msg);
+}
+
 /// Fetch an optional numeric transform param: missing -> @p dflt, else it
 /// must be a number in [lo,hi]. Throws with an edits[i].key-qualified message.
-inline double transform_param(const json &o, int idx, const char *key,
+inline double transform_param(const json &o, size_t idx, const char *key,
                               double dflt, double lo, double hi) {
   if (!o.contains(key)) return dflt;
   if (!o.at(key).is_number())
-    throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                             "]." + key + " must be a number");
+    throw edit_error(idx, std::string(".") + key + " must be a number");
   double d = o.at(key).get<double>();
   if (!(d >= lo && d <= hi))
-    throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                             "]." + key + " out of range");
+    throw edit_error(idx, std::string(".") + key + " out of range");
   return d;
+}
+
+/// Construct the Transform for one validated "edits" entry.
+inline TransformPtr parse_transform(const json &o, size_t idx) {
+  if (!o.is_object()) throw edit_error(idx, " must be an object");
+  if (!o.contains("edit") || !o.at("edit").is_string())
+    throw edit_error(idx, " missing string \"edit\"");
+
+  auto p = [&](const char *key, double dflt, double lo, double hi) {
+    return transform_param(o, idx, key, dflt, lo, hi);
+  };
+  const std::string name = o.at("edit").get<std::string>();
+
+  if (name == "brightnessContrast")
+    return std::make_unique<BrightnessContrast>(p("brightness", 0, -1, 1),
+                                                p("contrast", 0, -1, 1));
+  if (name == "exposure")
+    return std::make_unique<Exposure>(p("stops", 0, -5, 5));
+  if (name == "hueSaturation")
+    return std::make_unique<HueSaturation>(p("hue", 0, -1, 1),
+                                           p("saturation", 0, -1, 1));
+  if (name == "sepia") return std::make_unique<Sepia>(p("amount", 1, 0, 1));
+  if (name == "vibrance")
+    return std::make_unique<Vibrance>(p("amount", 0, -1, 1));
+  if (name == "blur") return std::make_unique<Blur>(p("radius", 0, 0, 100));
+  if (name == "sharpen")
+    return std::make_unique<Sharpen>(p("radius", 2, 0, 50),
+                                     p("amount", 0.5, 0, 5));
+  if (name == "vignette")
+    return std::make_unique<Vignette>(p("size", 0.5, 0, 1),
+                                      p("amount", 0.5, 0, 1));
+  if (name == "invert") return std::make_unique<Invert>();
+  if (name == "grayscale") return std::make_unique<Grayscale>();
+  if (name == "rotate")
+    return std::make_unique<Rotate>(p("angle", 0, -180, 180));
+  if (name == "crop") {
+    double x = p("x", 0, 0, 1), y = p("y", 0, 0, 1);
+    double w = p("width", 1, 0, 1), h = p("height", 1, 0, 1);
+    if (!(w > 0.0) || !(h > 0.0))
+      throw edit_error(idx, ".width/height must be > 0");
+    const double eps = 1e-9;
+    if (x + w > 1.0 + eps || y + h > 1.0 + eps)
+      throw edit_error(idx, ": crop region x+width/y+height exceeds 1");
+    return std::make_unique<Crop>(x, y, w, h);
+  }
+  throw edit_error(idx, ": unknown edit \"" + name + "\"");
 }
 
 /// Parse the optional "edits" array (thumbnail/convert only) into an
@@ -50,70 +100,8 @@ inline std::vector<TransformPtr> parse_transforms(const json &j) {
   std::vector<TransformPtr> out;
   if (!j.contains("edits")) return out;
   const json &arr = j.at("edits");
-  if (!arr.is_array())
-    throw std::runtime_error("\"edits\" must be an array");
-  for (size_t i = 0; i < arr.size(); i++) {
-    const json &o = arr.at(i);
-    int idx = (int)i;
-    if (!o.is_object())
-      throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                               "] must be an object");
-    if (!o.contains("edit") || !o.at("edit").is_string())
-      throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                               "] missing string \"edit\"");
-    std::string name = o.at("edit").get<std::string>();
-    if (name == "brightnessContrast") {
-      out.push_back(std::make_unique<BrightnessContrast>(
-          transform_param(o, idx, "brightness", 0.0, -1.0, 1.0),
-          transform_param(o, idx, "contrast", 0.0, -1.0, 1.0)));
-    } else if (name == "exposure") {
-      out.push_back(std::make_unique<Exposure>(
-          transform_param(o, idx, "stops", 0.0, -5.0, 5.0)));
-    } else if (name == "hueSaturation") {
-      out.push_back(std::make_unique<HueSaturation>(
-          transform_param(o, idx, "hue", 0.0, -1.0, 1.0),
-          transform_param(o, idx, "saturation", 0.0, -1.0, 1.0)));
-    } else if (name == "sepia") {
-      out.push_back(std::make_unique<Sepia>(
-          transform_param(o, idx, "amount", 1.0, 0.0, 1.0)));
-    } else if (name == "vibrance") {
-      out.push_back(std::make_unique<Vibrance>(
-          transform_param(o, idx, "amount", 0.0, -1.0, 1.0)));
-    } else if (name == "blur") {
-      out.push_back(std::make_unique<Blur>(
-          transform_param(o, idx, "radius", 0.0, 0.0, 100.0)));
-    } else if (name == "sharpen") {
-      out.push_back(std::make_unique<Sharpen>(
-          transform_param(o, idx, "radius", 2.0, 0.0, 50.0),
-          transform_param(o, idx, "amount", 0.5, 0.0, 5.0)));
-    } else if (name == "vignette") {
-      out.push_back(std::make_unique<Vignette>(
-          transform_param(o, idx, "size", 0.5, 0.0, 1.0),
-          transform_param(o, idx, "amount", 0.5, 0.0, 1.0)));
-    } else if (name == "invert") {
-      out.push_back(std::make_unique<Invert>());
-    } else if (name == "grayscale") {
-      out.push_back(std::make_unique<Grayscale>());
-    } else if (name == "crop") {
-      double x = transform_param(o, idx, "x", 0.0, 0.0, 1.0);
-      double y = transform_param(o, idx, "y", 0.0, 0.0, 1.0);
-      double w = transform_param(o, idx, "width", 1.0, 0.0, 1.0);
-      double h = transform_param(o, idx, "height", 1.0, 0.0, 1.0);
-      if (!(w > 0.0) || !(h > 0.0))
-        throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                                 "].width/height must be > 0");
-      const double eps = 1e-9;
-      if (x + w > 1.0 + eps || y + h > 1.0 + eps)
-        throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                                 "]: crop region x+width/y+height exceeds 1");
-      out.push_back(std::make_unique<Crop>(x, y, w, h));
-    } else if (name == "rotate") {
-      out.push_back(std::make_unique<Rotate>(
-          transform_param(o, idx, "angle", 0.0, -180.0, 180.0)));
-    } else {
-      throw std::runtime_error(std::string("edits[") + std::to_string(idx) +
-                               "]: unknown edit \"" + name + "\"");
-    }
-  }
+  if (!arr.is_array()) throw std::runtime_error("\"edits\" must be an array");
+  for (size_t i = 0; i < arr.size(); i++)
+    out.push_back(parse_transform(arr.at(i), i));
   return out;
 }

@@ -79,8 +79,9 @@ done
 if grep -q "^build_freetype" "$TMP"; then
   echo "ERROR: text/SVG strip missed build_freetype" >&2; exit 1
 fi
-grep -q "tar chzf" "$TMP" \
-  && { echo "ERROR: cut kept the packaging step" >&2; exit 1; } || true
+if grep -q "tar chzf" "$TMP"; then
+  echo "ERROR: cut kept the packaging step" >&2; exit 1
+fi
 echo "=== upstream deps-only build (no cleanup/packaging) ==="
 # Execute directly so the upstream `#!/usr/bin/env bash` shebang applies
 # (the script uses bash-only `export VAR+=...`; `sh` would fail).

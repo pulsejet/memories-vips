@@ -23,7 +23,7 @@ interface ParityCasesFileJson {
 
 const file = casesFile satisfies ParityCasesFileJson;
 
-export interface ParityCase {
+interface ParityCase {
   id: string;
   title: string;
   edits: Edit[];

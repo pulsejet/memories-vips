@@ -35,19 +35,11 @@ static std::string read_all_stdin() {
 }
 
 /// Print a JSON {"error":...} line to fd 3 (stderr fallback if closed).
-static void print_error(const std::string &msg) {
-  json err;
-  err["error"] = msg;
-  emit_json(err.dump());
-}
+static void print_error(const std::string &msg) { emit_json({{"error", msg}}); }
 
-int main(int argc, char **argv) {
-  // libvips global init; aborts to vips' own error path on failure.
-  if (VIPS_INIT(argv[0])) {
-    vips_error_exit(nullptr);
-    return 1;
-  }
-
+/// Handle argv + the stdin request; returns the exit code. Failures surface
+/// as exceptions, rendered as {"error":...} by the caller.
+static int run(int argc, char **argv) {
   // No argv API: the only accepted arguments are help/version flags.
   // Anything else is a usage error (avoids silently ignoring a stale
   // argv-style call).
@@ -58,7 +50,6 @@ int main(int argc, char **argv) {
     // the release tag minus leading v (tag v8.18.7-10 -> "8.18.7-10").
     if (a1 == "--version" || a1 == "-v" || a1 == "version") {
       printf("%s-%s\n", vips_version_string(), kPreviewBuild);
-      vips_shutdown();
       return 0;
     }
 
@@ -66,47 +57,45 @@ int main(int argc, char **argv) {
     if (a1 == "--help" || a1 == "-h" || a1 == "help") {
       print_usage(stdout);
       printf("vips=%s\n", vips_version_string());
-      vips_shutdown();
       return 0;
     }
 
-    // Stale argv-style invocation: JSON error + help, both on stderr.
     print_error(
         "no argv commands: send a single JSON object on stdin (see --help)");
     print_usage(stderr);
-    vips_shutdown();
     return 1;
   }
 
+  std::string req = read_all_stdin();
+
+  // Piped-nothing is the common mistake; point at the protocol.
+  if (req.empty()) {
+    print_error("empty stdin: expected a JSON object with \"cmd\"");
+    print_usage(stderr);
+    return 1;
+  }
+
+  // Parse (throws json::exception on malformed input), then validate.
+  Request r = parse_request(json::parse(req));
+  if (r.cmd == "info") return run_info(r);
+  if (r.cmd == "thumbnail") return run_thumbnail(r);
+  return run_convert(r);
+}
+
+int main(int argc, char **argv) {
+  json_fd();  // latch before libvips can open anything
+
+  // libvips global init; aborts to vips' own error path on failure.
+  if (VIPS_INIT(argv[0])) vips_error_exit(nullptr);
+
+  int rc = 1;
   try {
-    std::string req = read_all_stdin();
-
-    // Piped-nothing is the common mistake; point at the protocol.
-    if (req.empty()) {
-      print_error("empty stdin: expected a JSON object with \"cmd\"");
-      print_usage(stderr);
-      vips_shutdown();
-      return 1;
-    }
-
-    // Parse (throws json::exception on malformed input), then validate.
-    Request r = parse_request(json::parse(req));
-
-    // Dispatch on the validated command; convert is the fallthrough.
-    int rc = (r.cmd == "info")          ? run_info(r)
-             : (r.cmd == "thumbnail")   ? run_thumbnail(r)
-                                        : run_convert(r);
-
-    vips_shutdown();
-    return rc;
-  } catch (const VError &e) { // libvips failures (load/save/thumbnail)
-    print_error(e.what());
-    return 1;
-  } catch (const json::exception &e) { // malformed stdin JSON
+    rc = run(argc, argv);
+  } catch (const json::exception &e) {  // malformed stdin JSON
     print_error(std::string("invalid JSON: ") + e.what());
-    return 1;
-  } catch (const std::exception &e) { // validation + I/O failures
+  } catch (const std::exception &e) {  // libvips, validation + I/O failures
     print_error(e.what());
-    return 1;
   }
+  vips_shutdown();
+  return rc;
 }

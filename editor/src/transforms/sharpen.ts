@@ -28,7 +28,7 @@ varying vec2 texCoord;
 void main() {
   vec4 blurred = texture2D(blurredTexture, texCoord);
   vec4 original = texture2D(originalTexture, texCoord);
-  gl_FragColor = mix(blurred, original, 1.0 + strength);
+  gl_FragColor = vec4(mix(blurred.rgb, original.rgb, 1.0 + strength), original.a);
 }
 `;
 

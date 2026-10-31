@@ -23,6 +23,12 @@ describe('validation', () => {
     expect(validateState({ version: 1, edits: [{ edit: 'blur', radius: 3 }] })).toEqual([]);
     expect(validateState({ version: 2, edits: [] } as never)).not.toEqual([]);
   });
+  it('rejects Object.prototype keys as edit names', () => {
+    for (const name of ['constructor', 'toString', '__proto__']) {
+      expect(validateEdit({ edit: name } as never)).toEqual([`unknown edit ${name}`]);
+      expect(() => normalizeEdit({ edit: name } as never)).toThrow(`unknown edit ${name}`);
+    }
+  });
   it('normalizes then round-trips through JSON', () => {
     const back = stateFromJSON(stateToJSON({ version: 1, edits: [{ edit: 'sepia' }] }));
     expect(back).toEqual({ version: 1, edits: [{ edit: 'sepia', amount: 1 }] });

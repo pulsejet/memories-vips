@@ -17,8 +17,11 @@ brightness=1 and requires a white frame.
 from __future__ import annotations
 
 import os
+import re
+import struct
 import tempfile
 import unittest
+import zlib
 
 from test_preview import (
     VIPS_PREVIEW,
@@ -762,6 +765,146 @@ class TestEditsThumbnailStdout(unittest.TestCase):
                     obj = assert_info_json(self, out, err, width=ew, height=eh)
                     self.assertEqual(obj.get("output"), dst)
                     check_magic(read_bytes(dst), ".jpg")
+
+
+def jpeg_sizes(blob: bytes) -> list[tuple[int, int]]:
+    """(width, height) of every baseline/progressive frame: base, then gainmap."""
+    frames = re.finditer(rb"\xff[\xc0\xc2]\x00[\x0b\x11]\x08", blob)
+    sizes = [struct.unpack(">HH", blob[m.end() : m.end() + 4]) for m in frames]
+    return [(w, h) for h, w in sizes]
+
+
+def write_png16(path: str, rgba: tuple[int, int, int, int]) -> None:
+    """Write a 2x2 16-bit RGBA PNG, every pixel `rgba`."""
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(tag + data)
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
+
+    row = b"\0" + struct.pack(">4H", *rgba) * 2
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n")
+        f.write(chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 16, 6, 0, 0, 0)))
+        f.write(chunk(b"IDAT", zlib.compress(row * 2)))
+        f.write(chunk(b"IEND", b""))
+
+
+def png_first_pixel(path: str) -> bytes:
+    """First RGBA pixel of a non-interlaced, unfiltered-first-row 8-bit PNG."""
+    blob = read_bytes(path)
+    pos, idat = 8, b""
+    while pos < len(blob):
+        n = struct.unpack(">I", blob[pos : pos + 4])[0]
+        if blob[pos + 4 : pos + 8] == b"IDAT":
+            idat += blob[pos + 8 : pos + 8 + n]
+        pos += 12 + n
+    return zlib.decompress(idat)[1:5]
+
+
+def write_oriented_jpeg(src: str, dst: str, orientation: int) -> None:
+    """Copy a JPEG, inserting a minimal EXIF block with the given orientation."""
+    tiff = b"MM\0*\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01"
+    tiff += struct.pack(">HH", orientation, 0) + b"\0\0\0\0"
+    app1 = b"Exif\0\0" + tiff
+    blob = read_bytes(src)
+    with open(dst, "wb") as f:
+        f.write(blob[:2] + b"\xff\xe1" + struct.pack(">H", len(app1) + 2) + app1 + blob[2:])
+
+
+class TestEditsGainmap(unittest.TestCase):
+    """The gainmap must stay registered with the base image through geometry."""
+
+    def setUp(self):
+        need_edits(self)
+
+    def convert(self, td: str, input_name: str, edits: list) -> bytes:
+        dst = os.path.join(td, "o.jpg")
+        req = {"cmd": "convert", "input": data_path(input_name), "output": dst, "edits": edits}
+        rc, _, err = run_json(req)
+        self.assertEqual(rc, 0, err[:300])
+        # The output must read back as a valid UltraHDR file too.
+        rc, _, err = run_json({"cmd": "thumbnail", "input": dst, "output": dst + ".jpg"})
+        self.assertEqual(rc, 0, err[:300])
+        self.assertIn(b"MPF\x00", read_bytes(dst + ".jpg"))
+        return read_bytes(dst)
+
+    def test_geometric_edits_reach_gainmap(self):
+        # ultra-hdr.jpg: 3840x2160 base, 960x540 gainmap (scale 4).
+        for edit, base, gainmap in [
+            ({"edit": "crop", "width": 0.5, "height": 0.25}, (1920, 540), (480, 135)),
+            ({"edit": "rotate", "angle": 90}, (2160, 3840), (540, 960)),
+            ({"edit": "rotate", "angle": 30}, (4406, 3791), (1101, 948)),
+        ]:
+            with self.subTest(edit=edit), tempfile.TemporaryDirectory() as td:
+                self.assertEqual(jpeg_sizes(self.convert(td, "ultra-hdr.jpg", [edit])), [base, gainmap])
+
+    def test_pixel_edits_leave_gainmap(self):
+        with tempfile.TemporaryDirectory() as td:
+            sizes = jpeg_sizes(self.convert(td, "ultra-hdr.jpg", [{"edit": "invert"}]))
+            self.assertEqual(sizes, [(3840, 2160), (960, 540)])
+
+    def test_heic_gainmap_crop(self):
+        with tempfile.TemporaryDirectory() as td:
+            edit = {"edit": "crop", "width": 0.5, "height": 0.5}
+            base, gainmap = jpeg_sizes(self.convert(td, "samsung-heic-gainmap.heic", [edit]))[:2]
+            self.assertEqual(base, (2000, 1500))
+            self.assertAlmostEqual(gainmap[0] / gainmap[1], 4 / 3, places=1)
+
+    def test_stdout_keeps_gainmap(self):
+        rc, blob, err = run_json(
+            {"cmd": "thumbnail", "input": data_path("ultra-hdr.jpg"), "output": "o.jpg", "stdout": True}
+        )
+        self.assertEqual(rc, 0, err[:300])
+        self.assertIn(b"MPF\x00", blob)
+
+
+class TestEditsOrientation(unittest.TestCase):
+    """Edits address the upright image, like the canvas (and thumbnail) do."""
+
+    def setUp(self):
+        need_edits(self)
+
+    def test_convert_crop_is_upright(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "o6.jpg")
+            write_oriented_jpeg(data_path(DRIVER), src, 6)  # 290x442 stored, 442x290 shown
+            req = {"cmd": "convert", "input": src, "output": os.path.join(td, "o.jpg")}
+            rc, out, err = run_json({**req, "edits": [{"edit": "crop", "width": 0.5}]})
+            self.assertEqual(rc, 0, err[:300])
+            assert_info_json(self, out, err, width=221, height=290)
+
+    def test_gainmap_follows_exif_rotation(self):
+        with tempfile.TemporaryDirectory() as td:
+            src, dst = os.path.join(td, "o6.jpg"), os.path.join(td, "o.jpg")
+            write_oriented_jpeg(data_path("ultra-hdr.jpg"), src, 6)
+            rc, _, err = run_json(
+                {"cmd": "convert", "input": src, "output": dst, "edits": [{"edit": "invert"}]}
+            )
+            self.assertEqual(rc, 0, err[:300])
+            self.assertEqual(jpeg_sizes(read_bytes(dst)), [(2160, 3840), (540, 960)])
+
+    def test_no_edits_keeps_orientation_tag(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "o6.jpg")
+            write_oriented_jpeg(data_path(DRIVER), src, 6)
+            rc, out, err = run_json(
+                {"cmd": "convert", "input": src, "output": os.path.join(td, "o.jpg")}
+            )
+            self.assertEqual(rc, 0, err[:300])
+            assert_info_json(self, out, err, width=290, height=442)
+
+
+class TestEditsAlphaDepth(unittest.TestCase):
+    def test_16bit_alpha_keeps_transparency(self):
+        need_edits(self)
+        with tempfile.TemporaryDirectory() as td:
+            src, dst = os.path.join(td, "a.png"), os.path.join(td, "o.png")
+            write_png16(src, (0x8000, 0x4000, 0x2000, 0x4000))
+            rc, _, err = run_json(
+                {"cmd": "convert", "input": src, "output": dst, "edits": [{"edit": "exposure"}]}
+            )
+            self.assertEqual(rc, 0, err[:300])
+            self.assertAlmostEqual(png_first_pixel(dst)[3], 0x40, delta=1)
 
 
 if __name__ == "__main__":

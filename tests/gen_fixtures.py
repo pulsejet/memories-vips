@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Fetch real-photo fixtures into tests/data (no synthetic gradients).
 
-Every input is a real file: a native upstream sample (photo,
-graphic, HDR). Nothing here is a generated
-gradient/pattern.
+Every input is a real file: a native upstream sample (photo, graphic, HDR).
 
 Usage:
-    python3 tests/gen_fixtures.py
+    python3 tests/gen_fixtures.py [--bin PATH] [--no-verify]
 
-Only stdlib is used (urllib). Re-running is idempotent: files are
-skipped when already present with the expected size.
+Only stdlib is used (urllib). Re-running is idempotent: files already present
+are kept, unless their size differs from a pinned one.
 """
 from __future__ import annotations
 
@@ -64,7 +62,6 @@ def find_binary(explicit: str | None) -> str:
     if explicit:
         cands.append(explicit)
     cands.append(os.environ.get("VIPS_PREVIEW_BIN", ""))
-    cands.append("/tmp/opencode/testbins/v8.18.5-2/vips-preview")
     cands.append("/tmp/opencode/testbins/vips-preview")
     cands.append(shutil.which("vips-preview") or "")
     for c in cands:
@@ -77,8 +74,8 @@ def find_binary(explicit: str | None) -> str:
 
 
 def fetch(url: str, dest: str, expect: int | None) -> None:
-    if os.path.isfile(dest) and expect is not None:
-        if os.path.getsize(dest) == expect:
+    if os.path.isfile(dest):
+        if expect is None or os.path.getsize(dest) == expect:
             print(f"keep {os.path.basename(dest)}")
             return
         print(f"size mismatch for {os.path.basename(dest)}, re-fetching")
@@ -98,6 +95,8 @@ def fetch(url: str, dest: str, expect: int | None) -> None:
 def verify(binpath: str) -> None:
     bad = []
     for fn in sorted(os.listdir(DATA)):
+        if fn.endswith(".md"):
+            continue
         fp = os.path.join(DATA, fn)
         p = subprocess.run(
             [binpath],
@@ -109,7 +108,8 @@ def verify(binpath: str) -> None:
             bad.append((fn, p.stderr.decode()[:150]))
             print(f"FAIL {fn}: {p.stderr.decode()[:150]}")
         else:
-            print(f"ok   {fn}: {p.stdout.decode().strip()[:110]}")
+            # fd 3 is closed here, so the info line lands on stderr.
+            print(f"ok   {fn}: {p.stderr.decode().strip()[:110]}")
     if bad:
         raise SystemExit(f"{len(bad)} fixtures unreadable")
 
@@ -119,12 +119,12 @@ def main() -> None:
     ap.add_argument("--bin", default=None)
     ap.add_argument("--no-verify", action="store_true")
     args = ap.parse_args()
-    binpath = find_binary(args.bin)
+    binpath = None if args.no_verify else find_binary(args.bin)
     os.makedirs(DATA, exist_ok=True)
-    print(f"binary: {binpath}")
     for name, url, expect in FIXTURES:
         fetch(url, os.path.join(DATA, name), expect)
-    if not args.no_verify:
+    if binpath:
+        print(f"binary: {binpath}")
         verify(binpath)
 
 
