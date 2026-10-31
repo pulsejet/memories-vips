@@ -42,6 +42,17 @@ npm run format     # prettier --write
 npm run build      # typecheck + demo bundle (index.html + parity.html)
 ```
 
+## Publishing
+
+The package ships compiled `dist/` (JS + `.d.ts`, zero runtime deps).
+`npm publish` runs `prepublishOnly` (clean → typecheck → test → `build:lib`).
+
+```bash
+cd editor
+npm run publish:dry  # verify tarball contents without uploading
+npm publish          # clean + typecheck + test + build:lib, then publish
+```
+
 ## Wire format
 
 ```json

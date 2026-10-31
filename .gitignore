@@ -11,5 +11,6 @@ check-latest-versions.sh
 __pycache__/
 build-full.log
 /editor/node_modules/
+/editor/dist/
 /editor/dist-demo/
 /editor/demo/parity/
