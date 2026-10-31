@@ -13,6 +13,11 @@
       "edits": [{ "edit": "brightnessContrast", "brightness": 0, "contrast": 0.5 }]
     },
     {
+      "id": "contrast1",
+      "title": "brightnessContrast (contrast 1, capped gain)",
+      "edits": [{ "edit": "brightnessContrast", "brightness": 0, "contrast": 1 }]
+    },
+    {
       "id": "exposure",
       "title": "exposure",
       "edits": [{ "edit": "exposure", "stops": 1.0 }]

@@ -29,7 +29,7 @@ void main() {
   vec4 color = texture2D(texture, texCoord);
   color.rgb += brightness;
   if (contrast > 0.0) {
-    color.rgb = (color.rgb - 0.5) / (1.0 - contrast) + 0.5;
+    color.rgb = (color.rgb - 0.5) / max(1.0 - contrast, 0.0009765625) + 0.5;
   } else {
     color.rgb = (color.rgb - 0.5) * (1.0 + contrast) + 0.5;
   }
