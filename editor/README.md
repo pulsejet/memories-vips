@@ -63,8 +63,11 @@ off, normalized to 0..1 float alongside, reattached. Everything agrees to
 float precision (±1 LSB after quantize), including `blur`/`sharpen` (both
 sides convolve the same discrete kernel — `sigma=radius/2`,
 `half=min(15,max(1,ceil(2σ)))`, clamp edges — via two separable passes).
-Thumbnail edits run **after** resize (radii are output pixels); UHDR
-ICC+gainmap pass through untouched (gainmap is not re-derived). `rotate` by
+Thumbnail edits run **after** resize (radii are output pixels). The preview
+downscales sources larger than 2048px and scales `blur`/`sharpen` radii by
+the working/native ratio, so it shows the same *relative* blur as the
+full-res VIPS output. UHDR ICC+gainmap pass through untouched (gainmap is
+not re-derived). `rotate` by
 a non-90 angle appends a transparent alpha band (corners + fringes); 90°
 multiples stay exact with no band change.
 

@@ -38,11 +38,12 @@ export class BlurTransform implements Transform<'blur', BlurEdit> {
   }
 
   public apply(ctx: RenderContext, from: Target, to: Target, params: Full): Target {
-    if (params.radius <= 0) {
+    const radius = params.radius * ctx.resolutionScale;
+    if (radius <= 0) {
       ctx.blit(from, to);
       return to;
     }
-    const kernel = gaussianKernel(params.radius);
+    const kernel = gaussianKernel(radius);
     ctx.gauss(from, to, true, kernel);
     ctx.gauss(to, from, false, kernel);
     return from;

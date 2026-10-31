@@ -34,6 +34,8 @@ export class EditPipeline {
   private imgH = 0;
   private outW = 0;
   private outH = 0;
+  /** Working/native resolution ratio backing RenderContext.resolutionScale. */
+  private resScale = 1;
   private state: EditState = emptyState();
   private floatOK = false;
   private highp = false;
@@ -203,6 +205,7 @@ export class EditPipeline {
     this.imgH = h;
     this.outW = w;
     this.outH = h;
+    this.resScale = dims.w > 0 ? w / dims.w : 1;
     for (const t of [this.src, this.ping, this.pong, this.extra]) {
       if (t) {
         gl.deleteTexture(t.tex);
@@ -292,6 +295,7 @@ export class EditPipeline {
       outWidth: this.imgW,
       outHeight: this.imgH,
       highp: this.highp,
+      resolutionScale: this.resScale,
       extra,
       pass: (frag, from, to, setUniforms, extraTex) =>
         this.pass(frag, from, to, setUniforms, extraTex),

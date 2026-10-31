@@ -61,12 +61,13 @@ export class SharpenTransform implements Transform<'sharpen', SharpenEdit> {
   }
 
   public apply(ctx: RenderContext, from: Target, to: Target, params: Full): Target {
-    if (params.radius <= 0 || params.amount <= 0) {
+    const radius = params.radius * ctx.resolutionScale;
+    if (radius <= 0 || params.amount <= 0) {
       ctx.blit(from, to);
       return to;
     }
     ctx.blit(from, ctx.extra);
-    const kernel = gaussianKernel(params.radius);
+    const kernel = gaussianKernel(radius);
     ctx.gauss(from, to, true, kernel);
     ctx.gauss(to, from, false, kernel);
     ctx.pass(

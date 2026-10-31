@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { gaussianKernel } from '../src/math.js';
 import { EditPipeline } from '../src/pipeline.js';
 import type { Edit } from '../src/types.js';
 
@@ -13,6 +14,8 @@ function makeMockGL() {
     viewports: [] as Array<[number, number, number, number]>,
     draws: 0,
     clears: 0,
+    /** kernel lengths passed to the separable-gaussian shader, in order. */
+    gaussCounts: [] as number[],
   };
   let boundTex = 0;
   let boundFb = 0;
@@ -105,8 +108,10 @@ function makeMockGL() {
     vertexAttribPointer: () => {},
     disableVertexAttribArray: () => {},
     activeTexture: () => {},
-    getUniformLocation: () => ({}),
-    uniform1i: () => {},
+    getUniformLocation: (_prog: unknown, name: string) => ({ __uniform: name }),
+    uniform1i: (loc: { __uniform?: string } | null, v: number) => {
+      if (loc?.__uniform === 'count') calls.gaussCounts.push(v);
+    },
     uniform1f: () => {},
     uniform2f: () => {},
     uniform1fv: () => {},
@@ -250,6 +255,36 @@ describe('pipeline geometry plumbing (mock GL)', () => {
       expect(calls.draws).toBeGreaterThan(drawsBefore);
       const last = calls.viewports[calls.viewports.length - 1];
       expect(last).toEqual(containRect(40, 90, pipe.width, pipe.height));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('scales pixel radii by the working/native ratio end to end', () => {
+    // A 4096-wide source downscales to the 2048 working box (scale 0.5):
+    // blur radius 6 must convolve the radius-3 kernel (7 taps, twice),
+    // so the preview matches the full-res VIPS output relatively.
+    const stubCanvas = { width: 0, height: 0, getContext: () => ({ drawImage: () => {} }) };
+    vi.stubGlobal('document', { createElement: () => stubCanvas });
+    try {
+      const { gl, calls } = makeMockGL();
+      const canvas = {
+        width: 100,
+        height: 80,
+        getContext: (kind: string) => (kind === 'webgl' ? gl : null),
+      } as unknown as HTMLCanvasElement;
+      const pipe = new EditPipeline(canvas);
+      pipe.setImage({ width: 4096, height: 2048 } as unknown as TexImageSource);
+      expect(pipe.width).toBe(2048);
+      expect(pipe.height).toBe(1024);
+      expect(gaussianKernel(6).length).toBe(13);
+      pipe.setEdits([{ edit: 'blur', radius: 6 }]);
+      expect(calls.gaussCounts).toEqual([7, 7]);
+      // No downscale -> scale 1 -> full kernel.
+      pipe.setImage({ width: 64, height: 48 } as unknown as TexImageSource);
+      calls.gaussCounts.length = 0;
+      pipe.setEdits([{ edit: 'blur', radius: 6 }]);
+      expect(calls.gaussCounts).toEqual([13, 13]);
     } finally {
       vi.unstubAllGlobals();
     }

@@ -33,6 +33,8 @@ export interface RenderContext {
   outHeight: number;
   /** Fragment-shader highp support (rotate picks precision accordingly). */
   highp: boolean;
+  /** Working/native resolution ratio; pixel-unit radii scale by this (1 when no downscale). */
+  resolutionScale: number;
   extra: Target;
   pass(
     frag: string,
