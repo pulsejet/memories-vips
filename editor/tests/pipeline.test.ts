@@ -254,6 +254,48 @@ describe('pipeline geometry plumbing (mock GL)', () => {
     }
   });
 
+  it('stages ImageData through putImageData for the downscale path only', () => {
+    // drawImage() rejects ImageData: oversized sources must be staged via
+    // putImageData first (previously a runtime TypeError hidden by the
+    // CanvasImageSource cast); small ones upload to texImage2D directly.
+    const puts: unknown[][] = [];
+    const stubCanvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: () => {}, putImageData: (...a: unknown[]) => puts.push(a) }),
+    };
+    vi.stubGlobal('document', { createElement: () => stubCanvas });
+    try {
+      const { gl } = makeMockGL();
+      const canvas = {
+        width: 100,
+        height: 80,
+        getContext: (kind: string) => (kind === 'webgl' ? gl : null),
+      } as unknown as HTMLCanvasElement;
+      const pipe = new EditPipeline(canvas);
+      const big = {
+        width: 4096,
+        height: 2048,
+        data: new Uint8ClampedArray(4096 * 2048 * 4),
+      } as unknown as TexImageSource;
+      expect(() => pipe.setImage(big)).not.toThrow();
+      expect(pipe.width).toBe(2048);
+      expect(puts.length).toBe(1);
+      expect(puts[0]![0]).toBe(big);
+      puts.length = 0;
+      const small = {
+        width: 64,
+        height: 48,
+        data: new Uint8ClampedArray(64 * 48 * 4),
+      } as unknown as TexImageSource;
+      expect(() => pipe.setImage(small)).not.toThrow();
+      expect(pipe.width).toBe(64);
+      expect(puts.length).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('toJSON round-trips geometric edits for the VIPS side', () => {
     const { pipe } = makePipeline();
     const edits: Edit[] = [

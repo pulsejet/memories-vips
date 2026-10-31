@@ -15,6 +15,9 @@ editor/
     math.ts       shared pixel-math helpers
     shaders.ts    shared GLSL (quad, copy, blit, gaussian)
     pipeline.ts   EditPipeline — headless, canvas-taking preview
+    smallPreview.ts SmallPreview — cheap downscaled (≤512px) snapshots
+                    for an edit list on a hidden canvas; base upload +
+                    compiled programs reused across render() calls
     transforms/   one Transform class per edit + registry (index.ts)
                   + state serialization (state.ts); mirrors src/transforms/*.h
     index.ts      public surface (per-transform types import from their file)
@@ -84,19 +87,19 @@ ICC+gainmap survive: pixel edits leave the gainmap as is (it is not
 re-derived), `crop`/`rotate` apply to it too. `rotate` by a non-90 angle appends a transparent alpha band (corners + fringes); 90°
 multiples stay exact with no band change.
 
-| edit                    | params                                  | VIPS                             |
-| ----------------------- | --------------------------------------- | -------------------------------- |
-| `brightnessContrast`    | `brightness`, `contrast` −1..1          | `linear(mult, bias)`             |
-| `exposure`              | `stops` −5..5                           | `linear(2^stops)`                |
-| `hueSaturation`         | `hue`, `saturation` −1..1               | fused 3×3 (≡ `recomb`)           |
-| `sepia`                 | `amount` 0..1                           | same matrix, clipped at cast     |
-| `vibrance` / `vignette` | `amount` −1..1 / `size`, `amount` 0..1  | identical CPU loop               |
-| `shadows` / `highlights`| `amount` −1..1 (dark/bright-weighted lift) | identical CPU loop            |
-| `warmth`                | `amount` −1..1 (cool..warm R/B gains)   | `linear(1±0.3·a)`                |
-| `grayscale` / `invert`  | —                                       | `(r+g+b)/3` / `linear(-1, +1)`   |
-| `blur` / `sharpen`      | `radius` 0..100 / +`amount` 0..5        | shared kernel + `convsep` (mix)  |
-| `crop`                  | `x`,`y`,`width`,`height` 0..1 fractions | `extract_area` (rounded+clamped) |
-| `rotate`                | `angle` −180..180 (clockwise °)         | `rot()` @90s, else `rotate()`    |
+| edit                     | params                                     | VIPS                             |
+| ------------------------ | ------------------------------------------ | -------------------------------- |
+| `brightnessContrast`     | `brightness`, `contrast` −1..1             | `linear(mult, bias)`             |
+| `exposure`               | `stops` −5..5                              | `linear(2^stops)`                |
+| `hueSaturation`          | `hue`, `saturation` −1..1                  | fused 3×3 (≡ `recomb`)           |
+| `sepia`                  | `amount` 0..1                              | same matrix, clipped at cast     |
+| `vibrance` / `vignette`  | `amount` −1..1 / `size`, `amount` 0..1     | identical CPU loop               |
+| `shadows` / `highlights` | `amount` −1..1 (dark/bright-weighted lift) | identical CPU loop               |
+| `warmth`                 | `amount` −1..1 (cool..warm R/B gains)      | `linear(1±0.3·a)`                |
+| `grayscale` / `invert`   | —                                          | `(r+g+b)/3` / `linear(-1, +1)`   |
+| `blur` / `sharpen`       | `radius` 0..100 / +`amount` 0..5           | shared kernel + `convsep` (mix)  |
+| `crop`                   | `x`,`y`,`width`,`height` 0..1 fractions    | `extract_area` (rounded+clamped) |
+| `rotate`                 | `angle` −180..180 (clockwise °)            | `rot()` @90s, else `rotate()`    |
 
 Excluded (no clean VIPS mapping): `denoise`, `noise`, `curves`,
 `lensBlur`/`tiltShift`/`zoomBlur`, halftones, warps.

@@ -183,7 +183,7 @@ export class EditPipeline {
       const g = scratch.getContext('2d');
       if (!g) throw new Error('setImage: 2D context unavailable for downscale');
       g.imageSmoothingQuality = 'high';
-      g.drawImage(source as CanvasImageSource, 0, 0, w, h);
+      g.drawImage(EditPipeline.toDrawableSource(source), 0, 0, w, h);
       upload = scratch;
     }
     this.imgW = w;
@@ -486,5 +486,29 @@ export class EditPipeline {
       this.canvas.height = this.outH;
     }
     this.draw(BLIT_FRAG, from, null, this.outW, this.outH);
+  }
+
+  /**
+   * drawImage() rejects ImageData — a valid TexImageSource that texImage2D
+   * accepts — so stage ImageData through a 2D canvas first. Everything else
+   * passes through untouched. Duck-types ({width,height,data}) instead of
+   * instanceof so cross-realm ImageData works too.
+   */
+  public static toDrawableSource(source: TexImageSource): CanvasImageSource {
+    const o = source as unknown as { data?: unknown; width?: unknown; height?: unknown };
+    if (
+      typeof o.width !== 'number' ||
+      typeof o.height !== 'number' ||
+      !(o.data instanceof Uint8ClampedArray)
+    ) {
+      return source as unknown as CanvasImageSource;
+    }
+    const staged = document.createElement('canvas');
+    staged.width = o.width;
+    staged.height = o.height;
+    const g = staged.getContext('2d');
+    if (!g) throw new Error('toDrawableSource: 2D context unavailable for ImageData upload');
+    g.putImageData(source as ImageData, 0, 0);
+    return staged;
   }
 }
