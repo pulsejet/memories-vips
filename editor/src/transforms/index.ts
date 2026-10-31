@@ -9,6 +9,7 @@ import { BlurTransform } from './blur.js';
 import { BrightnessContrastTransform } from './brightnessContrast.js';
 import { CropTransform } from './crop.js';
 import { ExposureTransform } from './exposure.js';
+import { FlipTransform } from './flip.js';
 import { GrayscaleTransform } from './grayscale.js';
 import { HighlightsTransform } from './highlights.js';
 import { HueSaturationTransform } from './hueSaturation.js';
@@ -37,6 +38,7 @@ export const TRANSFORMS: Record<EditName, Transform<string, object>> = {
   grayscale: new GrayscaleTransform(),
   crop: new CropTransform(),
   rotate: new RotateTransform(),
+  flip: new FlipTransform(),
 };
 
 /** Human-readable problems; empty means the edit is VIPS-appliable. */

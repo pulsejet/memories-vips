@@ -9,6 +9,7 @@ import type { BlurEdit } from './transforms/blur.js';
 import type { BrightnessContrastEdit } from './transforms/brightnessContrast.js';
 import type { CropEdit } from './transforms/crop.js';
 import type { ExposureEdit } from './transforms/exposure.js';
+import type { FlipEdit } from './transforms/flip.js';
 import type { GrayscaleEdit } from './transforms/grayscale.js';
 import type { HighlightsEdit } from './transforms/highlights.js';
 import type { HueSaturationEdit } from './transforms/hueSaturation.js';
@@ -36,7 +37,8 @@ export type EditName =
   | 'invert'
   | 'grayscale'
   | 'crop'
-  | 'rotate';
+  | 'rotate'
+  | 'flip';
 
 export type Edit =
   | BrightnessContrastEdit
@@ -53,7 +55,8 @@ export type Edit =
   | InvertEdit
   | GrayscaleEdit
   | CropEdit
-  | RotateEdit;
+  | RotateEdit
+  | FlipEdit;
 
 export const EDIT_STATE_VERSION = 1 as const;
 

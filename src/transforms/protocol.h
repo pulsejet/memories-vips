@@ -16,6 +16,7 @@
 #include "brightness_contrast.h"
 #include "crop.h"
 #include "exposure.h"
+#include "flip.h"
 #include "grayscale.h"
 #include "highlights.h"
 #include "hue_saturation.h"
@@ -89,6 +90,17 @@ inline TransformPtr parse_transform(const json &o, size_t idx) {
   if (name == "grayscale") return std::make_unique<Grayscale>();
   if (name == "rotate")
     return std::make_unique<Rotate>(p("angle", 0, -180, 180));
+  if (name == "flip") {
+    std::string direction = "horizontal";
+    if (o.contains("direction")) {
+      if (!o.at("direction").is_string())
+        throw edit_error(idx, ".direction must be a string");
+      direction = o.at("direction").get<std::string>();
+    }
+    if (direction != "horizontal" && direction != "vertical")
+      throw edit_error(idx, ".direction must be \"horizontal\" or \"vertical\"");
+    return std::make_unique<Flip>(direction == "vertical");
+  }
   if (name == "crop") {
     double x = p("x", 0, 0, 1), y = p("y", 0, 0, 1);
     double w = p("width", 1, 0, 1), h = p("height", 1, 0, 1);

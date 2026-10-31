@@ -17,6 +17,9 @@ describe('validation', () => {
     expect(validateEdit({ edit: 'crop', width: 0 })).not.toEqual([]);
     expect(validateEdit({ edit: 'crop', x: 0.8, width: 0.5 })).not.toEqual([]);
     expect(validateEdit({ edit: 'rotate', angle: 200 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'flip', direction: 'diagonal' } as never)).not.toEqual([]);
+    expect(validateEdit({ edit: 'flip', direction: 'vertical' })).toEqual([]);
+    expect(validateEdit({ edit: 'flip' })).toEqual([]);
     expect(validateEdit({ edit: 'crop', x: 0.1, y: 0.1, width: 0.5, height: 0.5 })).toEqual([]);
     expect(validateEdit({ edit: 'rotate', angle: 45 })).toEqual([]);
     expect(validateEdit({ edit: 'rotate' })).toEqual([]);
@@ -54,7 +57,7 @@ describe('validation', () => {
 });
 
 describe('registry', () => {
-  it('covers all fifteen edits with a full Transform signature', () => {
+  it('covers all sixteen edits with a full Transform signature', () => {
     expect(Object.keys(TRANSFORMS).sort()).toEqual(
       [
         'brightnessContrast',
@@ -72,6 +75,7 @@ describe('registry', () => {
         'invert',
         'grayscale',
         'rotate',
+        'flip',
       ].sort(),
     );
     for (const t of Object.values(TRANSFORMS)) {

@@ -100,6 +100,7 @@ multiples stay exact with no band change.
 | `blur` / `sharpen`       | `radius` 0..100 / +`amount` 0..5           | shared kernel + `convsep` (mix)  |
 | `crop`                   | `x`,`y`,`width`,`height` 0..1 fractions    | `extract_area` (rounded+clamped) |
 | `rotate`                 | `angle` −180..180 (clockwise °)            | `rot()` @90s, else `rotate()`    |
+| `flip`                   | `direction` horizontal/vertical            | `fliphor` / `flipver`            |
 
 Excluded (no clean VIPS mapping): `denoise`, `noise`, `curves`,
 `lensBlur`/`tiltShift`/`zoomBlur`, halftones, warps.

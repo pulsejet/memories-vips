@@ -51,6 +51,7 @@ Commands — send exactly one JSON object on stdin:
     {"edit":"vignette","size":0.5,"amount":0.5}                0..1 each (edge darkening)
     {"edit":"crop","x":0,"y":0,"width":1,"height":1}           fractions 0..1 (default full frame)
     {"edit":"rotate","angle":0}                                clockwise degrees, -180..180
+    {"edit":"flip","direction":"horizontal"}                   mirror "horizontal" (left-right) or "vertical"
 
   Example:
     echo '{"cmd":"convert","input":"in.jpg","output":"out.jpg",

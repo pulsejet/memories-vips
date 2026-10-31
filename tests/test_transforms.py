@@ -183,6 +183,16 @@ class TestEditsValidation(unittest.TestCase):
         self.assertEqual(rc, 1)
         assert_error_json(self, err, "must be a number")
 
+    def test_flip_rejects_bad_direction(self):
+        for edits, msg in [
+            ([{"edit": "flip", "direction": "diagonal"}], "direction"),
+            ([{"edit": "flip", "direction": 1}], "direction"),
+        ]:
+            with self.subTest(edits=edits):
+                rc, _, err = run_json(self.req(edits))
+                self.assertEqual(rc, 1, str(edits))
+                assert_error_json(self, err, msg)
+
     def test_edits_rejected_shape_for_thumbnail_too(self):
         with tempfile.TemporaryDirectory() as td:
             rc, _, err = run_json(
@@ -490,6 +500,34 @@ class TestEditsParity(unittest.TestCase):
             _, _, got = parse_ppm(read_bytes(dst))
             bad = sum(1 for a, b in zip(got, exp) if abs(a - b) > 1)
             self.assertEqual(bad, 0, f"{bad} bytes off by >1")
+
+    def test_flip_double_is_identity(self):
+        """Mirroring twice restores every pixel (pure reorder, no resample)."""
+        with tempfile.TemporaryDirectory() as td:
+            ref = convert_ppm_raster(DRIVER, None, td, "ref")
+            for direction in ("horizontal", "vertical"):
+                out = convert_ppm_raster(
+                    DRIVER,
+                    [{"edit": "flip", "direction": direction}] * 2,
+                    td,
+                    f"flip2{direction}",
+                )
+                self.assertEqual(ref, out, f"double flip {direction}")
+
+    def test_flip_both_axes_equals_rotate180(self):
+        """flipH + flipV addresses the same texels as a 180 rotation."""
+        with tempfile.TemporaryDirectory() as td:
+            a = convert_ppm_raster(
+                DRIVER,
+                [
+                    {"edit": "flip", "direction": "horizontal"},
+                    {"edit": "flip", "direction": "vertical"},
+                ],
+                td,
+                "flips",
+            )
+            b = convert_ppm_raster(DRIVER, [{"edit": "rotate", "angle": 180}], td, "rot")
+            self.assertEqual(a, b)
 
     def test_order_matters(self):
         """sepia->grayscale vs grayscale->sepia must differ (ordered pipeline)."""

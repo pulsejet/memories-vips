@@ -83,6 +83,16 @@
       "id": "rotate30",
       "title": "rotate (30 arbitrary)",
       "edits": [{ "edit": "rotate", "angle": 30 }]
+    },
+    {
+      "id": "flipH",
+      "title": "flip (horizontal)",
+      "edits": [{ "edit": "flip", "direction": "horizontal" }]
+    },
+    {
+      "id": "flipV",
+      "title": "flip (vertical)",
+      "edits": [{ "edit": "flip", "direction": "vertical" }]
     }
   ]
 }
