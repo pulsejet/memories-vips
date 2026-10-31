@@ -1,11 +1,10 @@
 # @radialapps/memories-vips-editor — headless WebGL preview + VIPS-mappable edit list
 
 Pure-TypeScript, zero-dependency library. The caller provides a `<canvas>`
-**and owns its size** (backing store `width`/`height` plus CSS); the
-pipeline renders an **ordered list of image edits** with fullscreen
-shader passes (ping-pong, like `glfx.js`), presenting contain-fit —
-centered on opaque black, never resizing the canvas. A ResizeObserver
-re-presents when the host resizes the canvas box. The same list serializes
+(layout and CSS); the pipeline renders an **ordered list of image edits**
+with fullscreen shader passes (ping-pong, like `glfx.js`), resizing the
+canvas backing store to the rendered output area and presenting 1:1 — the
+image always fills the canvas exactly. The same list serializes
 to JSON that `vips-preview` (`convert`/`thumbnail` `"edits"`) applies
 before saving.
 

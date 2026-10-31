@@ -129,7 +129,8 @@ function makeMockGL() {
 
 function makePipeline() {
   const { gl, calls } = makeMockGL();
-  // Externally-owned canvas backing store: the pipeline must never resize it.
+  // The pipeline owns the backing store size: whatever it starts at, the
+  // first render resizes it to the rendered area.
   const canvas = {
     width: 100,
     height: 80,
@@ -140,47 +141,34 @@ function makePipeline() {
   return { pipe, canvas, calls };
 }
 
-/** Contain-fit rect the pipeline should present into (mirrors toCanvas). */
-function containRect(
-  cw: number,
-  ch: number,
-  iw: number,
-  ih: number,
-): [number, number, number, number] {
-  const scale = Math.min(cw / iw, ch / ih);
-  const dw = Math.min(cw, Math.max(1, Math.round(iw * scale)));
-  const dh = Math.min(ch, Math.max(1, Math.round(ih * scale)));
-  return [Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh];
-}
-
 describe('pipeline geometry plumbing (mock GL)', () => {
-  it('never resizes the externally-owned canvas', () => {
+  it('resizes the canvas to the rendered area', () => {
     const { pipe, canvas } = makePipeline();
     expect(pipe.width).toBe(64);
     expect(pipe.height).toBe(48);
-    expect(canvas.width).toBe(100);
-    expect(canvas.height).toBe(80);
+    expect(canvas.width).toBe(64);
+    expect(canvas.height).toBe(48);
     pipe.setEdits([{ edit: 'rotate', angle: 90 }]);
-    expect(canvas.width).toBe(100);
-    expect(canvas.height).toBe(80);
+    expect(canvas.width).toBe(48);
+    expect(canvas.height).toBe(64);
   });
 
-  it('presents contain-fit centered on black', () => {
+  it('presents fullscreen 1:1 with no letterbox', () => {
     const { pipe, canvas, calls } = makePipeline();
     pipe.setEdits([{ edit: 'crop', x: 0.25, y: 0.25, width: 0.5, height: 0.5 }]);
     expect(pipe.width).toBe(32);
     expect(pipe.height).toBe(24);
-    // 32x24 into 100x80: scale 3.125 -> 100x75 at (0, ~2).
-    expect(calls.clears).toBeGreaterThan(0);
+    expect(canvas.width).toBe(32);
+    expect(canvas.height).toBe(24);
     const last = calls.viewports[calls.viewports.length - 1];
-    expect(last).toEqual(containRect(canvas.width, canvas.height, 32, 24));
-    expect(last).toEqual([0, 3, 100, 75]);
+    expect(last).toEqual([0, 0, 32, 24]);
   });
 
   it('rotate 90 swaps, chained geometry composes in order', () => {
-    const { pipe } = makePipeline();
+    const { pipe, canvas } = makePipeline();
     pipe.setEdits([{ edit: 'rotate', angle: 90 }]);
     expect([pipe.width, pipe.height]).toEqual([48, 64]);
+    expect([canvas.width, canvas.height]).toEqual([48, 64]);
     // crop to center half, then rotate 30: dims follow each step
     pipe.setEdits([
       { edit: 'crop', x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
@@ -190,6 +178,7 @@ describe('pipeline geometry plumbing (mock GL)', () => {
     const s = Math.sin(Math.PI / 6);
     expect(pipe.width).toBe(Math.round(32 * c + 24 * s));
     expect(pipe.height).toBe(Math.round(32 * s + 24 * c));
+    expect([canvas.width, canvas.height]).toEqual([pipe.width, pipe.height]);
   });
 
   it('pixel edits after geometry see the new size (no stale targets)', () => {
@@ -204,60 +193,35 @@ describe('pipeline geometry plumbing (mock GL)', () => {
     ];
     expect(() => pipe.setEdits(edits)).not.toThrow();
     expect(calls.draws).toBeGreaterThan(0);
-    // final pass presents the cropped output contain-fit into the canvas
+    // final pass presents the cropped output fullscreen into the resized canvas
     const last = calls.viewports[calls.viewports.length - 1];
-    expect(last).toEqual(containRect(canvas.width, canvas.height, pipe.width, pipe.height));
-    expect(canvas.width).toBe(100);
-    expect(canvas.height).toBe(80);
+    expect(last).toEqual([0, 0, pipe.width, pipe.height]);
+    expect(canvas.width).toBe(pipe.width);
+    expect(canvas.height).toBe(pipe.height);
   });
 
   it('addEdit/removeEdit/clearEdits keep dims consistent', () => {
-    const { pipe } = makePipeline();
+    const { pipe, canvas } = makePipeline();
     pipe.addEdit({ edit: 'rotate', angle: 90 });
     expect([pipe.width, pipe.height]).toEqual([48, 64]);
+    expect([canvas.width, canvas.height]).toEqual([48, 64]);
     pipe.addEdit({ edit: 'crop', x: 0, y: 0, width: 0.5, height: 1 });
     expect([pipe.width, pipe.height]).toEqual([24, 64]);
+    expect([canvas.width, canvas.height]).toEqual([24, 64]);
     pipe.removeEdit(0);
     expect([pipe.width, pipe.height]).toEqual([32, 48]);
+    expect([canvas.width, canvas.height]).toEqual([32, 48]);
     pipe.clearEdits();
     expect([pipe.width, pipe.height]).toEqual([64, 48]);
+    expect([canvas.width, canvas.height]).toEqual([64, 48]);
   });
 
-  it('re-renders when the observed canvas box resizes', () => {
-    let cb: (() => void) | null = null;
-    let observed: unknown = null;
-    class ROStub {
-      constructor(fn: () => void) {
-        cb = fn;
-      }
-      observe(t: unknown) {
-        observed = t;
-      }
-      disconnect() {}
-    }
-    vi.stubGlobal('ResizeObserver', ROStub);
-    try {
-      const { gl, calls } = makeMockGL();
-      const canvas = {
-        width: 100,
-        height: 80,
-        getContext: (kind: string) => (kind === 'webgl' ? gl : null),
-      } as unknown as HTMLCanvasElement;
-      const pipe = new EditPipeline(canvas);
-      expect(observed).toBe(canvas);
-      pipe.setImage({ width: 64, height: 48 } as unknown as TexImageSource);
-      // Host resizes the backing store, observer fires -> re-present.
-      canvas.width = 40;
-      canvas.height = 90;
-      const drawsBefore = calls.draws;
-      expect(cb).not.toBeNull();
-      cb!();
-      expect(calls.draws).toBeGreaterThan(drawsBefore);
-      const last = calls.viewports[calls.viewports.length - 1];
-      expect(last).toEqual(containRect(40, 90, pipe.width, pipe.height));
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it('canvas follows a new source size', () => {
+    const { pipe, canvas } = makePipeline();
+    expect([canvas.width, canvas.height]).toEqual([64, 48]);
+    pipe.setImage({ width: 20, height: 10 } as unknown as TexImageSource);
+    expect([pipe.width, pipe.height]).toEqual([20, 10]);
+    expect([canvas.width, canvas.height]).toEqual([20, 10]);
   });
 
   it('scales pixel radii by the working/native ratio end to end', () => {

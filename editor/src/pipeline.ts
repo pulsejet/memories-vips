@@ -1,14 +1,13 @@
 // pipeline.ts — headless WebGL preview for an ordered edit list.
 //
-// Headless means: the caller owns the <canvas> — layout, DOM, *and* sizing
-// (backing store `canvas.width/height` plus any CSS). The pipeline takes
-// over its WebGL context, uploads the source image, and runs each edit
-// through its Transform (transforms/) — single shader passes or multi-pass
-// sequences (blur/sharpen) ping-ponging between two RGBA textures, the same
-// structure as glfx.js Canvas — and presents the result letterboxed
-// (contain-fit, centered on opaque black) without ever resizing the canvas.
-// A ResizeObserver on the canvas re-renders when its box changes, so the
-// image stays centered as the host resizes it.
+// Headless means: the caller owns the <canvas> — layout and DOM — while the
+// pipeline owns its backing store size: every render resizes
+// `canvas.width/height` to the rendered output area (source size when no
+// geometric edit applies) and presents the result fullscreen 1:1, so the
+// image always fills the canvas exactly — never letterboxed, never cropped.
+// Each edit runs through its Transform (transforms/) — single shader passes
+// or multi-pass sequences (blur/sharpen) ping-ponging between two RGBA
+// textures, the same structure as glfx.js Canvas.
 //
 // Serialization (toJSON) emits the canonical {version, edits} state; the same
 // array (normalized) is what vips-preview accepts as "edits".
@@ -39,18 +38,13 @@ export class EditPipeline {
   private state: EditState = emptyState();
   private floatOK = false;
   private highp = false;
-  // Kept alive for the pipeline's lifetime; re-renders when the host
-  // resizes the canvas box. Never disconnected: the canvas outlives the
-  // pipeline anyway (destroyed together).
-  private resizeObserver: ResizeObserver | null = null;
 
   /**
    * Take over the canvas' WebGL context. preserveDrawingBuffer stays true
    * so the demo can read pixels back; premultipliedAlpha stays false
    * so alpha survives the passes unmodified. The canvas backing store is
-   * never touched — size it externally; the pipeline contain-fits the
-   * output into it (centered, black surround) and re-renders on resize.
-   * Throws when WebGL is missing.
+   * resized to the rendered output on every render — the caller owns layout
+   * and CSS only. Throws when WebGL is missing.
    */
   public constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -71,16 +65,6 @@ export class EditPipeline {
       this.highp = !!fmt && fmt.precision > 0;
     } catch {
       this.highp = false;
-    }
-    // Recenter/refill when the host resizes the canvas box. Guarded for
-    // non-DOM runtimes (node tests); no disconnect needed.
-    try {
-      if (typeof ResizeObserver !== 'undefined') {
-        this.resizeObserver = new ResizeObserver(() => this.render());
-        this.resizeObserver.observe(canvas);
-      }
-    } catch {
-      this.resizeObserver = null;
     }
     const buf = gl.createBuffer();
     if (!buf) throw new Error('WebGL: createBuffer failed');
@@ -175,8 +159,8 @@ export class EditPipeline {
   /**
    * Upload a new source image, (re)allocating all targets to it.
    * Oversized sources are downscaled through a 2D canvas first (see
-   * MAX_DIM); old GL targets are deleted. The canvas backing store is
-   * left alone (externally owned). Ends with a full render().
+   * MAX_DIM); old GL targets are deleted. Ends with a full render(),
+   * which resizes the canvas backing store to the output area.
    * Throws with a message instead of rendering black on failure.
    */
   public setImage(source: TexImageSource): void {
@@ -241,8 +225,8 @@ export class EditPipeline {
    * between them internally and return either side). Geometric edits
    * (crop/rotate) change dimensions: `nxt` is resized to the edit's
    * outputDims before apply, `extra` is kept at the input size (sharpen
-   * scratch). Presents contain-fit into the externally-sized canvas.
-   * No-op when no image is loaded yet.
+   * scratch). Presents by resizing the canvas to the rendered area and
+   * blitting fullscreen 1:1. No-op when no image is loaded yet.
    */
   public render(): void {
     if (!this.src || !this.ping || !this.pong || !this.extra || this.imgW === 0) return;
@@ -475,25 +459,21 @@ export class EditPipeline {
   }
 
   /**
-   * Present the final result contain-fit into the externally-sized canvas:
-   * the whole backing store is cleared to opaque black, then the image is
-   * drawn into the largest centered rect preserving aspect ratio (the
-   * BLIT_FRAG flip still compensates the unflipped upload). The canvas
-   * backing store is only ever read here, never resized.
+   * Present the final result: resize the canvas backing store to the
+   * rendered output area (a no-op assignment when it already matches —
+   * setting width/height clears, so this only fires when geometry changed)
+   * and blit fullscreen 1:1. (The BLIT_FRAG flip still compensates the
+   * unflipped upload.)
    */
   private toCanvas(from: Target): void {
     const gl = this.gl;
-    const cw = this.canvas.width;
-    const ch = this.canvas.height;
+    if (this.outW <= 0 || this.outH <= 0) return;
+    if (this.canvas.width !== this.outW || this.canvas.height !== this.outH) {
+      this.canvas.width = this.outW;
+      this.canvas.height = this.outH;
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    if (cw <= 0 || ch <= 0 || this.outW <= 0 || this.outH <= 0) return;
-    // Black surround first (clear ignores the viewport; scissor stays off).
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    const scale = Math.min(cw / this.outW, ch / this.outH);
-    const dw = Math.min(cw, Math.max(1, Math.round(this.outW * scale)));
-    const dh = Math.min(ch, Math.max(1, Math.round(this.outH * scale)));
-    gl.viewport(Math.round((cw - dw) / 2), Math.round((ch - dh) / 2), dw, dh);
+    gl.viewport(0, 0, this.outW, this.outH);
     const prog = this.program(BLIT_FRAG);
     gl.useProgram(prog);
     const loc = gl.getAttribLocation(prog, 'aPos');
