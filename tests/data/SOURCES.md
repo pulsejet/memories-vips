@@ -1,7 +1,7 @@
 # tests/data — real file samples
 
-No synthetic gradients. Every fixture is a real photo, graphic, HDR
-capture, or vector — a native upstream sample.
+No synthetic gradients. Every fixture is a real photo, graphic, or HDR
+capture — a native upstream sample.
 
 Regenerate with `python3 tests/gen_fixtures.py` (needs
 `VIPS_PREVIEW_BIN` for the verify step).
@@ -20,7 +20,6 @@ Regenerate with `python3 tests/gen_fixtures.py` (needs
 | `orientation6.avif` | libvips `avif-orientation-6.avif` | Real AVIF, EXIF orientation 6, 3024×4032 | Orientation handling (`no_rotate=false`) |
 | `example.heic` | libheif `examples/example.heic` | Real HEVC photo 1280×854 | HEIC input |
 | `sample.tif` | libvips `sample.tif` | Real TIFF photo 290×442 | TIFF input |
-| `logo.svg` | libvips `logo.svg` | Real vector 736×552 | SVG (rsvg) input |
 | `sample.exr` | libvips `sample.exr` | Real OpenEXR 610×406 (float) | EXR input (read-only in this build) |
 | `sample.hdr` | libvips `sample.hdr` | Real Radiance 141×980 | HDR input |
 | `ultra-hdr.jpg` | libvips `ultra-hdr.jpg` | Real UltraHDR gainmap photo 3840×2160 | `keep=icc,gainmap` thumbnail path |

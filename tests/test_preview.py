@@ -12,7 +12,7 @@ Covers first-party code:
   util.h      lower/ends_with via case-insensitive cmd/crop/extension.
   usage.h     help text content.
 
-Fixtures: tests/data/* are REAL files (photos, graphics, HDR, vector —
+Fixtures: tests/data/* are REAL files (photos, graphics, HDR —
 see data/SOURCES.md and gen_fixtures.py). Nothing is a generated
 gradient. Binary: $VIPS_PREVIEW_BIN, else well-known paths, else PATH.
 
@@ -68,7 +68,6 @@ EXPECTED_DIMS = {
     "orientation6.avif": (3024, 4032),
     "example.heic": (1280, 854),
     "sample.tif": (290, 442),
-    "logo.svg": (736, 552),
     "sample.exr": (610, 406),
     "sample.hdr": (141, 980),
     "ultra-hdr.jpg": (3840, 2160),
@@ -361,6 +360,19 @@ class TestProtocolValidation(unittest.TestCase):
 
     def test_missing_file_is_verror(self):
         rc, out, err = run_json({"cmd": "info", "input": "/nonexistent-xyz.ppm"})
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, b"")
+        assert_error_json(self, err, "")
+
+    def test_svg_input_unsupported(self):
+        # Text/SVG stack removed (no pangocairo/rsvg): SVG has no loader.
+        # Self-contained: no fixture file needed.
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"></svg>'
+        with tempfile.TemporaryDirectory() as td:
+            fp = os.path.join(td, "t.svg")
+            with open(fp, "wb") as f:
+                f.write(svg)
+            rc, out, err = run_json({"cmd": "info", "input": fp})
         self.assertEqual(rc, 1)
         self.assertEqual(out, b"")
         assert_error_json(self, err, "")

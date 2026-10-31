@@ -2,7 +2,7 @@
 """Fetch real-photo fixtures into tests/data (no synthetic gradients).
 
 Every input is a real file: a native upstream sample (photo,
-graphic, HDR, vector). Nothing here is a generated
+graphic, HDR). Nothing here is a generated
 gradient/pattern.
 
 Usage:
@@ -38,7 +38,6 @@ FIXTURES: list[tuple[str, str, int | None]] = [
     ("photo.webp", f"{LIBVIPS}/1.webp", 30320),
     ("orientation6.avif", f"{LIBVIPS}/avif-orientation-6.avif", 162011),
     ("sample.tif", f"{LIBVIPS}/sample.tif", 769526),
-    ("logo.svg", f"{LIBVIPS}/logo.svg", 4700),
     ("sample.exr", f"{LIBVIPS}/sample.exr", 378570),
     ("sample.hdr", f"{LIBVIPS}/sample.hdr", 432160),
     ("ultra-hdr.jpg", f"{LIBVIPS}/ultra-hdr.jpg", 1190669),

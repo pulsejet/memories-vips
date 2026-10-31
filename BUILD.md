@@ -47,13 +47,10 @@ docker run --privileged --rm tonistiigi/binfmt --install arm64
 docker build --platform linux/arm64 --pull -t vips-dev-linux-musl-arm64 \
   platforms/linux-musl-arm64
 docker run --rm --platform linux/arm64 \
-  -e CARGO_BUILD_JOBS=32 -v "$PWD:/packaging" vips-dev-linux-musl-arm64 \
+  -v "$PWD:/packaging" vips-dev-linux-musl-arm64 \
   sh -c "/packaging/build-deps-only.sh && /packaging/build-camera-extras.sh"
 # → vips-cli-linux-musl-arm64-static.tar.gz (~14 MB)
 ```
-
-`CARGO_BUILD_JOBS=32` caps Rust parallelism — uncapped emulated rustc is
-the main OOM risk. Everything else stays at `-j$(nproc)`.
 
 ## 3. Verify the result
 
@@ -82,8 +79,11 @@ binary can be smoke-tested the same way on x86_64 once binfmt is installed
 
 - `build-deps-only.sh` runs a truncated copy of upstream `build/posix.sh`,
   stopping before its `rm -rf $TARGET/lib/{pkgconfig,cmake,...}` cleanup,
-  so `.pc` + CMake metadata survive for the static rebuilds. Upstream files
-  are only ever read, never modified.
+  so `.pc` + CMake metadata survive for the static rebuilds. It also strips
+  the text/SVG stack (`fontconfig/harfbuzz/freetype/pixman/cairo/fribidi/
+  pango/rsvg` — `text` + `svgload`, unused by the CLI) and forces
+  `-Dpangocairo=disabled -Drsvg=disabled -Dfontconfig=disabled` on the
+  vips setup. Upstream files are only ever read, never modified.
 - `build-camera-extras.sh` builds the delta static deps (dav1d,
   libde265, SVT-AV1, Imath, OpenEXR, libraw), rebuilds
   `libheif` (AV1 + HEVC-decode built in, no plugins) and `libvips` (static, no
@@ -99,9 +99,8 @@ are ephemeral container storage.
   failed transiently (usually GitHub rate-limiting). Just re-run — the
   scripts harden curl with `--fail` + retries, but a bad fetch still aborts.
 - Emulated ARM build dies silently (frozen log, no container): usually the
-  OOM killer during the Rust/librsvg phase — keep `CARGO_BUILD_JOBS` capped
-  and check `docker logs` on the container (daemon-side logs stay complete
-  even if a piped log file stalls).
+  OOM killer — check `docker logs` on the container (daemon-side logs stay
+  complete even if a piped log file stalls).
 - `ld: cannot find -lgcc_s`: stale `x265.pc` from older builds — removed
   with x265; if it recurs, another dep's `.pc` is injecting it
   (`grep -r lgcc_s /target/lib/pkgconfig` inside the container).

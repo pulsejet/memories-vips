@@ -12,7 +12,7 @@ Build both static CLIs. Full guide: `BUILD.md`. Only Docker is needed on the hos
    `docker build --pull -t vips-dev-linux-musl-x64 platforms/linux-musl-x64`
    `docker run --rm -v "$PWD:/packaging" vips-dev-linux-musl-x64 sh -c "/packaging/build-deps-only.sh && /packaging/build-camera-extras.sh"`
    → `vips-cli-linux-musl-x64-static.tar.gz`.
-3. aarch64: same with `linux-musl-arm64` on ARM64 host (~1 h). On x86_64, one-time `docker run --privileged --rm tonistiigi/binfmt --install arm64`, then add `--platform linux/arm64` to build and run, plus `-e CARGO_BUILD_JOBS=32` on the run (~3–4 h; caps emulated rustc, main OOM risk).
+3. aarch64: same with `linux-musl-arm64` on ARM64 host (~1 h). On x86_64, one-time `docker run --privileged --rm tonistiigi/binfmt --install arm64`, then add `--platform linux/arm64` to build and run (~3–4 h).
 
 ## Rules
 

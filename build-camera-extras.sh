@@ -148,6 +148,7 @@ done
     -Dintrospection=disabled -Dmodules=disabled \
     -Dcfitsio=disabled -Dfftw=disabled -Dmagick=disabled -Dmatio=disabled -Dnifti=disabled \
     -Dopenslide=disabled -Dpdfium=disabled -Dpoppler=disabled -Dquantizr=disabled \
+    -Dpangocairo=disabled -Drsvg=disabled -Dfontconfig=disabled \
     -Dheif-module=disabled -Djpeg-xl-module=disabled -Dmagick-module=disabled \
     -Dopenslide-module=disabled -Dpoppler-module=disabled \
     -Draw=enabled -Dheif=enabled -Djpeg-xl=disabled -Dopenjpeg=disabled \
@@ -181,9 +182,12 @@ fi
 file "${TARGET}/bin/vips-preview" || true
 
 # --- versions.json (upstream tail is skipped, so seed it from both properties files) ---
+# Text/SVG stack (cairo/pango/etc.) is stripped from the build, so drop those
+# pins even though they remain in upstream versions.properties.
 python3 - "$TARGET/versions.json" <<'EOF'
 import json, sys
 path = sys.argv[1]
+dropped = {"cairo", "pango", "pixman", "fribidi", "fontconfig", "freetype", "harfbuzz", "rsvg"}
 data = {}
 for f in ("/packaging/versions.properties", "/packaging/versions.camera.properties"):
     try:
@@ -197,7 +201,10 @@ for f in ("/packaging/versions.properties", "/packaging/versions.camera.properti
                 if k == "UPSTREAM_TAG":
                     data["upstream"] = v.strip()
                 elif k.startswith("VERSION_"):
-                    data[k[len("VERSION_"):].lower()] = v.strip()
+                    name = k[len("VERSION_"):].lower()
+                    if name in dropped:
+                        continue
+                    data[name] = v.strip()
     except FileNotFoundError:
         pass
 with open(path, "w") as f:
