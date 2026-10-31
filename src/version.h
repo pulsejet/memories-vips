@@ -6,4 +6,4 @@
 #pragma once
 
 /// Build number suffix for --version (tag v8.18.7-10 -> "8.18.7-10").
-inline constexpr const char kPreviewBuild[] = "12";
+inline constexpr const char kPreviewBuild[] = "13";
