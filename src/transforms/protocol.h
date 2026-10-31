@@ -17,14 +17,17 @@
 #include "crop.h"
 #include "exposure.h"
 #include "grayscale.h"
+#include "highlights.h"
 #include "hue_saturation.h"
 #include "invert.h"
 #include "rotate.h"
 #include "sepia.h"
+#include "shadows.h"
 #include "sharpen.h"
 #include "transform.h"
 #include "vibrance.h"
 #include "vignette.h"
+#include "warmth.h"
 
 using nlohmann::json;
 
@@ -69,6 +72,12 @@ inline TransformPtr parse_transform(const json &o, size_t idx) {
   if (name == "sepia") return std::make_unique<Sepia>(p("amount", 1, 0, 1));
   if (name == "vibrance")
     return std::make_unique<Vibrance>(p("amount", 0, -1, 1));
+  if (name == "shadows")
+    return std::make_unique<Shadows>(p("amount", 0, -1, 1));
+  if (name == "highlights")
+    return std::make_unique<Highlights>(p("amount", 0, -1, 1));
+  if (name == "warmth")
+    return std::make_unique<Warmth>(p("amount", 0, -1, 1));
   if (name == "blur") return std::make_unique<Blur>(p("radius", 0, 0, 100));
   if (name == "sharpen")
     return std::make_unique<Sharpen>(p("radius", 2, 0, 50),

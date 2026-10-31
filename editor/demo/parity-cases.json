@@ -52,6 +52,21 @@
       "title": "vignette",
       "edits": [{ "edit": "vignette", "size": 0.55, "amount": 0.6 }]
     },
+    {
+      "id": "shadows",
+      "title": "shadows (lift)",
+      "edits": [{ "edit": "shadows", "amount": 0.6 }]
+    },
+    {
+      "id": "highlights",
+      "title": "highlights (boost)",
+      "edits": [{ "edit": "highlights", "amount": 0.6 }]
+    },
+    {
+      "id": "warmth",
+      "title": "warmth",
+      "edits": [{ "edit": "warmth", "amount": 0.6 }]
+    },
     { "id": "invert", "title": "invert", "edits": [{ "edit": "invert" }] },
     { "id": "grayscale", "title": "grayscale", "edits": [{ "edit": "grayscale" }] },
     {

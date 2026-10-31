@@ -10,13 +10,16 @@ import type { BrightnessContrastEdit } from './transforms/brightnessContrast.js'
 import type { CropEdit } from './transforms/crop.js';
 import type { ExposureEdit } from './transforms/exposure.js';
 import type { GrayscaleEdit } from './transforms/grayscale.js';
+import type { HighlightsEdit } from './transforms/highlights.js';
 import type { HueSaturationEdit } from './transforms/hueSaturation.js';
 import type { InvertEdit } from './transforms/invert.js';
 import type { RotateEdit } from './transforms/rotate.js';
 import type { SepiaEdit } from './transforms/sepia.js';
+import type { ShadowsEdit } from './transforms/shadows.js';
 import type { SharpenEdit } from './transforms/sharpen.js';
 import type { VibranceEdit } from './transforms/vibrance.js';
 import type { VignetteEdit } from './transforms/vignette.js';
+import type { WarmthEdit } from './transforms/warmth.js';
 
 export type EditName =
   | 'brightnessContrast'
@@ -27,6 +30,9 @@ export type EditName =
   | 'blur'
   | 'sharpen'
   | 'vignette'
+  | 'shadows'
+  | 'highlights'
+  | 'warmth'
   | 'invert'
   | 'grayscale'
   | 'crop'
@@ -41,6 +47,9 @@ export type Edit =
   | BlurEdit
   | SharpenEdit
   | VignetteEdit
+  | ShadowsEdit
+  | HighlightsEdit
+  | WarmthEdit
   | InvertEdit
   | GrayscaleEdit
   | CropEdit

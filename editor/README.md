@@ -91,6 +91,8 @@ multiples stay exact with no band change.
 | `hueSaturation`         | `hue`, `saturation` −1..1               | fused 3×3 (≡ `recomb`)           |
 | `sepia`                 | `amount` 0..1                           | same matrix, clipped at cast     |
 | `vibrance` / `vignette` | `amount` −1..1 / `size`, `amount` 0..1  | identical CPU loop               |
+| `shadows` / `highlights`| `amount` −1..1 (dark/bright-weighted lift) | identical CPU loop            |
+| `warmth`                | `amount` −1..1 (cool..warm R/B gains)   | `linear(1±0.3·a)`                |
 | `grayscale` / `invert`  | —                                       | `(r+g+b)/3` / `linear(-1, +1)`   |
 | `blur` / `sharpen`      | `radius` 0..100 / +`amount` 0..5        | shared kernel + `convsep` (mix)  |
 | `crop`                  | `x`,`y`,`width`,`height` 0..1 fractions | `extract_area` (rounded+clamped) |

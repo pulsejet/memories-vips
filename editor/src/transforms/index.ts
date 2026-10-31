@@ -10,13 +10,16 @@ import { BrightnessContrastTransform } from './brightnessContrast.js';
 import { CropTransform } from './crop.js';
 import { ExposureTransform } from './exposure.js';
 import { GrayscaleTransform } from './grayscale.js';
+import { HighlightsTransform } from './highlights.js';
 import { HueSaturationTransform } from './hueSaturation.js';
 import { InvertTransform } from './invert.js';
 import { RotateTransform } from './rotate.js';
 import { SepiaTransform } from './sepia.js';
+import { ShadowsTransform } from './shadows.js';
 import { SharpenTransform } from './sharpen.js';
 import { VibranceTransform } from './vibrance.js';
 import { VignetteTransform } from './vignette.js';
+import { WarmthTransform } from './warmth.js';
 
 export const TRANSFORMS: Record<EditName, Transform<string, object>> = {
   brightnessContrast: new BrightnessContrastTransform(),
@@ -27,6 +30,9 @@ export const TRANSFORMS: Record<EditName, Transform<string, object>> = {
   blur: new BlurTransform(),
   sharpen: new SharpenTransform(),
   vignette: new VignetteTransform(),
+  shadows: new ShadowsTransform(),
+  highlights: new HighlightsTransform(),
+  warmth: new WarmthTransform(),
   invert: new InvertTransform(),
   grayscale: new GrayscaleTransform(),
   crop: new CropTransform(),

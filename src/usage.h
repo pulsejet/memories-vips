@@ -41,6 +41,9 @@ Commands — send exactly one JSON object on stdin:
     {"edit":"hueSaturation","hue":0,"saturation":0}            -1..1 each
     {"edit":"sepia","amount":1}                                0..1 (default full)
     {"edit":"vibrance","amount":0}                             -1..1
+    {"edit":"shadows","amount":0}                                -1..1 (dark-weighted lift)
+    {"edit":"highlights","amount":0}                             -1..1 (bright-weighted lift)
+    {"edit":"warmth","amount":0}                                 -1..1 (cool..warm R/B gains)
     {"edit":"grayscale"}                                       channel average
     {"edit":"invert"}                                          1 - pixel
     {"edit":"blur","radius":0}                                 gaussian px, 0..100, 0 skips

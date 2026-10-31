@@ -9,6 +9,9 @@ describe('validation', () => {
     expect(validateEdit({ edit: 'exposure', stops: 6 })).not.toEqual([]);
     expect(validateEdit({ edit: 'sepia', amount: -0.1 })).not.toEqual([]);
     expect(validateEdit({ edit: 'vignette', size: 2 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'shadows', amount: 2 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'highlights', amount: -1.5 })).not.toEqual([]);
+    expect(validateEdit({ edit: 'warmth', amount: 1.1 })).not.toEqual([]);
     expect(validateEdit({ edit: 'sharpen', amount: 9 })).not.toEqual([]);
     expect(validateEdit({ edit: 'crop', x: 2 })).not.toEqual([]);
     expect(validateEdit({ edit: 'crop', width: 0 })).not.toEqual([]);
@@ -51,7 +54,7 @@ describe('validation', () => {
 });
 
 describe('registry', () => {
-  it('covers all twelve edits with a full Transform signature', () => {
+  it('covers all fifteen edits with a full Transform signature', () => {
     expect(Object.keys(TRANSFORMS).sort()).toEqual(
       [
         'brightnessContrast',
@@ -63,6 +66,9 @@ describe('registry', () => {
         'blur',
         'sharpen',
         'vignette',
+        'shadows',
+        'highlights',
+        'warmth',
         'invert',
         'grayscale',
         'rotate',

@@ -147,6 +147,9 @@ class TestEditsValidation(unittest.TestCase):
             [{"edit": "hueSaturation", "hue": 1.1}],
             [{"edit": "sepia", "amount": 1.5}],
             [{"edit": "vibrance", "amount": -2}],
+            [{"edit": "shadows", "amount": -2}],
+            [{"edit": "highlights", "amount": 1.5}],
+            [{"edit": "warmth", "amount": -1.5}],
             [{"edit": "blur", "radius": -1}],
             [{"edit": "sharpen", "radius": 100}],
             [{"edit": "sharpen", "amount": 6}],
@@ -216,6 +219,9 @@ class TestEditsParity(unittest.TestCase):
             {"edit": "hueSaturation", "hue": 0, "saturation": 0},
             {"edit": "sepia", "amount": 0},
             {"edit": "vibrance", "amount": 0},
+            {"edit": "shadows", "amount": 0},
+            {"edit": "highlights", "amount": 0},
+            {"edit": "warmth", "amount": 0},
             {"edit": "blur", "radius": 0},
             {"edit": "sharpen", "radius": 0, "amount": 0},
             {"edit": "vignette", "size": 0.5, "amount": 0},
@@ -277,6 +283,39 @@ class TestEditsParity(unittest.TestCase):
             _, _, b = parse_ppm(out)
             bad = sum(1 for x, y in zip(a, b) if abs(min(255, 2 * x) - y) > 1)
             self.assertEqual(bad, 0, f"{bad} pixels off by >1")
+
+    def test_shadows_highlights_stay_monotonic(self):
+        """No tone reversal: a gray ramp must stay non-decreasing at full strength.
+
+        Regression test: rgb += amount*w with w=(1-v)^2 / v^2 reverses tones
+        past |amount|>0.5 (black lifts past mid-gray, white drops below
+        near-white), so both edits scale the amount by 0.5.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            w, h = 64, 1
+            ramp = bytearray()
+            for x in range(w):
+                v = round(x * 255 / (w - 1))
+                ramp += bytes([v, v, v])
+            src = os.path.join(td, "ramp.ppm")
+            with open(src, "wb") as f:
+                f.write(f"P6\n{w} {h}\n255\n".encode() + bytes(ramp))
+            for edit in (
+                {"edit": "shadows", "amount": 1},
+                {"edit": "shadows", "amount": -1},
+                {"edit": "highlights", "amount": 1},
+                {"edit": "highlights", "amount": -1},
+            ):
+                with self.subTest(edit=edit):
+                    dst = os.path.join(td, "o.ppm")
+                    rc, _, err = run_json(
+                        {"cmd": "convert", "input": src, "output": dst, "edits": [edit]}
+                    )
+                    self.assertEqual(rc, 0, err[:300])
+                    _, _, px = parse_ppm(read_bytes(dst))
+                    vals = [px[i * 3] for i in range(w)]
+                    bad = sum(1 for a, b in zip(vals, vals[1:]) if b < a - 1)
+                    self.assertEqual(bad, 0, f"{edit}: ramp reverses at {vals}")
 
     def test_hue_rotation_matches_reference(self):
         """Pin the C++ matrix to an independent Python port of the glfx math.
