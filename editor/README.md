@@ -44,6 +44,15 @@ npm run format     # prettier --write
 npm run build      # typecheck + demo bundle (index.html + parity.html)
 ```
 
+### Lifecycle
+
+`EditPipeline.dispose()` frees all GL resources (targets, quad, programs)
+and loses the WebGL context — the canvas is poisoned and can't host a new
+pipeline, so use a fresh canvas for the next preview. Any GL or mutating
+call after `dispose()` throws. `SmallPreview.dispose()` delegates to it;
+browsers cap live WebGL contexts (~16/page), so dispose hidden previews
+when done.
+
 ## Publishing
 
 The package ships compiled `dist/` (JS + `.d.ts`, zero runtime deps).

@@ -39,6 +39,7 @@ export class EditPipeline {
   private state: EditState = emptyState();
   private floatOK = false;
   private highp = false;
+  private disposed = false;
 
   /**
    * Take over the canvas' WebGL context. preserveDrawingBuffer stays true
@@ -123,6 +124,55 @@ export class EditPipeline {
     return stateToJSON(this.state);
   }
 
+  /** Free all GL state and lose the context (canvas can't be reused). Idempotent. */
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const gl = this.gl;
+    for (const t of [this.src, this.ping, this.pong, this.extra]) {
+      if (!t) continue;
+      try {
+        gl.deleteTexture(t.tex);
+      } catch {
+        // Context already gone — nothing to release.
+      }
+      try {
+        gl.deleteFramebuffer(t.fb);
+      } catch {
+        // Context already gone — nothing to release.
+      }
+    }
+    this.src = null;
+    this.ping = null;
+    this.pong = null;
+    this.extra = null;
+    if (this.quad) {
+      try {
+        gl.deleteBuffer(this.quad);
+      } catch {
+        // Context already gone — nothing to release.
+      }
+      this.quad = null;
+    }
+    for (const p of this.programs.values()) {
+      try {
+        gl.deleteProgram(p);
+      } catch {
+        // Context already gone — nothing to release.
+      }
+    }
+    this.programs.clear();
+    this.imgW = 0;
+    this.imgH = 0;
+    this.outW = 0;
+    this.outH = 0;
+    try {
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch {
+      // Context already gone — nothing to release.
+    }
+  }
+
   /**
    * Longest side of the working image. Camera JPEGs (12-50MP) would need
    * hundreds of MB as float ping-pong targets and exceed
@@ -148,6 +198,13 @@ export class EditPipeline {
     return { w: num(anySrc['width']), h: num(anySrc['height']) };
   }
 
+  /** Throw on any GL or mutating entry after dispose(). */
+  private assertAlive(caller: string): void {
+    if (this.disposed) {
+      throw new Error(`EditPipeline: ${caller} called after dispose()`);
+    }
+  }
+
   /** Turn a sticky GL error flag into a thrown message naming the stage. */
   private checkGLError(stage: string): void {
     const gl = this.gl;
@@ -165,6 +222,7 @@ export class EditPipeline {
    * Throws with a message instead of rendering black on failure.
    */
   public setImage(source: TexImageSource): void {
+    this.assertAlive('setImage');
     const gl = this.gl;
     const dims = this.sourceDims(source);
     if (!dims.w || !dims.h) throw new Error('setImage: source has no width/height');
@@ -230,6 +288,7 @@ export class EditPipeline {
    * blitting fullscreen 1:1. No-op when no image is loaded yet.
    */
   public render(): void {
+    this.assertAlive('render');
     if (!this.src || !this.ping || !this.pong || !this.extra || this.imgW === 0) return;
     this.ensureSize('ping', this.imgW, this.imgH);
     // Start from the source image.
@@ -407,6 +466,7 @@ export class EditPipeline {
     setUniforms?: UniformSetter,
     extraTex?: ExtraTex,
   ): void {
+    this.assertAlive('pass');
     this.draw(frag, from, to.fb, to.w, to.h, setUniforms, extraTex);
   }
 

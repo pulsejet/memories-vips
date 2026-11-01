@@ -90,19 +90,12 @@ export class SmallPreview {
     return out;
   }
 
-  /** Release the hidden WebGL context; render() throws until setSource again. */
+  /** Release the hidden pipeline and WebGL context; render() throws until setSource again. */
   public dispose(): void {
-    const view = this.view;
+    this.pipe?.dispose();
     this.pipe = null;
     this.view = null;
     this.hasSource = false;
-    if (!view) return;
-    try {
-      // getContext('webgl') returns the existing context for this canvas.
-      view.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext();
-    } catch {
-      // Context already gone — nothing to release.
-    }
   }
 
   /** Pixel size of any TexImageSource upload (mirrors EditPipeline). */
