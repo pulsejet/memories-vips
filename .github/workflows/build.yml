@@ -74,4 +74,5 @@ jobs:
           overwrite: true
           body: |
             `vips-cli-linux-x64-static` + `vips-cli-linux-arm64-static`
-            (musl-static, runs on musl and glibc≥2.28).
+            (fully static musl binaries, NEEDED=0 — run on any Linux
+            x64/arm64 host, no glibc/musl version requirement).

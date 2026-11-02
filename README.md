@@ -1,8 +1,9 @@
 # vips-static — portable static-contained libvips C++ CLI
 
 Ship `libvips` + camera preview CLI as **2 fully-static musl binaries**
-(`linux-x64`, `linux-arm64`) that run on both `glibc≥2.28` and `musl≥1.2.5`
-hosts. No system imaging libs required.
+(`linux-x64`, `linux-arm64`) that run on any Linux x64/arm64 host
+(`NEEDED=0` — no glibc/musl version requirement).
+No system imaging libs required.
 
 ## Status
 
