@@ -46,6 +46,13 @@ FIXTURES: list[tuple[str, str, int | None]] = [
         718114,
     ),
     (
+        # iPhone 13 Pro HDR HEIC: Apple hdrgainmap aux, HDRGainMapVersion 1
+        # (headroom only in the maker note). MIT, johncf/apple-hdr-heic.
+        "apple-heic-gainmap.heic",
+        "https://media.githubusercontent.com/media/johncf/apple-hdr-heic/master/tests/data/hdr-sample.heic",
+        238982,
+    ),
+    (
         "flower-gray.png",
         "https://raw.githubusercontent.com/libjxl/testdata/main/jxl/flower/flower_small.g.png",
         131801,

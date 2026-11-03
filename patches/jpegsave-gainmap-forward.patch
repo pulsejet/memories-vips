@@ -13,11 +13,13 @@ libvips forwards jpegsave to uhdrsave on "gainmap" (or heifload provides
 ---
 --- a/libvips/foreign/jpegsave.c
 +++ b/libvips/foreign/jpegsave.c
-@@ -156,6 +156,7 @@
+@@ -156,6 +156,9 @@
  
  	if (have_uhdr &&
  		(vips_image_get_typeof(save->ready, "gainmap-data") ||
-+		 vips_image_get_typeof(save->ready, "gainmap") ||
++		 (vips_image_get_typeof(save->ready, "gainmap") &&
++		  vips_image_get_typeof(save->ready,
++			  "gainmap-max-content-boost")) ||
  		 save->ready->Type == VIPS_INTERPRETATION_scRGB)) {
  		/* Pass on to uhdrsave.
  		 */

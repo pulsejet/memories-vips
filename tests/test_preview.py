@@ -72,6 +72,7 @@ EXPECTED_DIMS = {
     "ultra-hdr.jpg": (3840, 2160),
     "gainmap-odd.jpg": (129, 97),
     "samsung-heic-gainmap.heic": (4000, 3000),
+    "apple-heic-gainmap.heic": (1512, 850),
 }
 
 # Saver-matrix + convert driver: a real photo (not a gradient).
@@ -621,6 +622,68 @@ class TestThumbnail(unittest.TestCase):
                 has_21496 or has_hdrgm,
                 "thumb lacks gainmap metadata (21496/XMP hdrgm)",
             )
+
+    def _heic_thumb(self, blob: bytes, name: str):
+        """Thumbnail HEIC bytes to JPEG; returns (rc, err, jpeg bytes)."""
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, name)
+            with open(src, "wb") as f:
+                f.write(blob)
+            dst = os.path.join(td, "thumb.jpg")
+            rc, _, err = run_json({"cmd": "thumbnail", "input": src, "output": dst})
+            out = read_bytes(dst) if rc == 0 else b""
+        return rc, err, out
+
+    def _apple_fixture(self) -> bytes:
+        src = data_path("apple-heic-gainmap.heic")
+        if not os.path.isfile(src):
+            self.skipTest("missing apple-heic-gainmap.heic fixture")
+        return read_bytes(src)
+
+    @staticmethod
+    def _replace_gainmap_xmp(blob: bytes, xml: str) -> bytes:
+        # Rewrite the aux item's XMP in place, padded to the same length so
+        # every iloc offset stays valid.
+        start = blob.rfind(b"<x:xmpmeta", 0, blob.find(b"xmlns:HDRGainMap"))
+        end = blob.find(b"</x:xmpmeta>", start) + len(b"</x:xmpmeta>")
+        new = xml.encode()
+        assert start >= 0 and len(new) <= end - start
+        new = new[:-12] + b" " * (end - start - len(new)) + new[-12:]
+        return blob[:start] + new + blob[end:]
+
+    def test_apple_heic_gainmap_thumbnail_is_uhdr(self):
+        # iPhone HEIC: Apple HDRGainMap: XMP (not hdrgm:), headroom from the
+        # maker note. heifload maps it to ISO 21496-1 gainmap-* fields. It
+        # used to attach the gainmap without them, and jpegsave -> uhdrsave
+        # then failed on "gainmap-max-content-boost" (no thumbnail at all).
+        rc, err, blob = self._heic_thumb(self._apple_fixture(), "apple.heic")
+        self.assertEqual(rc, 0, f"apple HEIC: {err[:300]}")
+        self.assertIn(b"MPF\x00", blob, "apple HEIC thumb lost its gainmap")
+        self.assertIn(b"21496", blob, "apple HEIC thumb lacks ISO 21496-1")
+
+    def test_heic_gainmap_without_metadata_falls_back_to_sdr(self):
+        # Apple gainmap whose headroom can't be found (no XMP headroom,
+        # maker note signature broken): must still thumbnail, as plain SDR.
+        blob = self._apple_fixture().replace(b"Apple iOS\0", b"Apple XXX\0", 1)
+        rc, err, out = self._heic_thumb(blob, "apple-noheadroom.heic")
+        self.assertEqual(rc, 0, f"gainmap without metadata: {err[:300]}")
+        self.assertNotIn(b"MPF\x00", out)
+
+    def test_heic_hdrgm_minimal_xmp_is_uhdr(self):
+        # hdrgm: XMP with only the required GainMapMax/HDRCapacityMax: the
+        # optional fields must take spec defaults (Gamma 1, not 0) and the
+        # gainmap must apply in the base colour space (use_base_cg), or
+        # uhdrsave rejects it.
+        xml = (
+            '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf='
+            '"http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description '
+            'xmlns:hdrgm="http://ns.adobe.com/hdr-gain-map/1.0/" '
+            'hdrgm:GainMapMax="2" hdrgm:HDRCapacityMax="2"/></rdf:RDF></x:xmpmeta>'
+        )
+        blob = self._replace_gainmap_xmp(self._apple_fixture(), xml)
+        rc, err, out = self._heic_thumb(blob, "hdrgm-minimal.heic")
+        self.assertEqual(rc, 0, f"minimal hdrgm: {err[:300]}")
+        self.assertIn(b"MPF\x00", out, "minimal hdrgm thumb lost its gainmap")
 
     def test_default_geometry_is_512(self):
         with tempfile.TemporaryDirectory() as td:
