@@ -31,6 +31,7 @@ class Rotate final : public Transform {
     else if (a > 180.0)
       a -= 360.0;
     if (a == 0.0) return im;
+    im = drop_thumbnail(im);
 
     long q = std::lround(a / 90.0);
     if (std::fabs(a - (double)q * 90.0) < 1e-9) {

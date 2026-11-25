@@ -95,6 +95,15 @@ inline VImage get_gainmap(VImage im) {
   return gainmap ? VImage(gainmap) : VImage();
 }
 
+/// Drop the embedded EXIF thumbnail (IFD1). It is a pre-rendered copy of the
+/// source pixels, so after any rotation it would show the old orientation;
+/// libvips omits it on save once this field is gone (vips_exif_set_thumbnail).
+inline VImage drop_thumbnail(VImage im) {
+  im = im.copy();
+  im.remove("jpeg-thumbnail-data");
+  return im;
+}
+
 /// Bake EXIF orientation into the pixels so edits address the upright image
 /// the editor canvas showed. autorot() ignores the attached gainmap (it
 /// carries no orientation of its own), so rotate that the same way here.
@@ -102,6 +111,7 @@ inline VImage upright(VImage im) {
   if (!im.get_typeof(VIPS_META_ORIENTATION)) return im;
   const int orientation = im.get_int(VIPS_META_ORIENTATION);
   VImage out = im.autorot();
+  if (orientation != 1) out = drop_thumbnail(out);
   if (VImage gainmap = get_gainmap(im); gainmap.get_image()) {
     gainmap = gainmap.copy();
     gainmap.set(VIPS_META_ORIENTATION, orientation);

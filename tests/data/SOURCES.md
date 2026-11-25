@@ -26,6 +26,7 @@ Regenerate with `python3 tests/gen_fixtures.py` (needs
 | `gainmap-odd.jpg` | libvips `gainmap-odd-dimensions.jpg` | Tiny gainmap edge case 129×97 | Odd-dimension gainmap |
 | `samsung-heic-gainmap.heic` | User-provided Samsung Galaxy S25 Ultra `20261014_100402.heic` (4000×3000 + 1000×750 aux `urn:com:samsung:photo:2024:aux:hdrgainmap`, HDRCapacityMax 2.3) | Real HEIC HDR gainmap photo 4000×3000 | HEIC `heifload` aux gainmap path (needs `patches/heifload-iso21496-gainmap.patch`; upstream PR #5132 closed unmerged) |
 | `apple-heic-gainmap.heic` | johncf/apple-hdr-heic `tests/data/hdr-sample.heic` (MIT) — iPhone 13 Pro, 756×425 aux `urn:com:apple:photo:2020:aux:hdrgainmap`, `HDRGainMapVersion` 65536, maker note headroom 7.3717 | Real Apple HDR HEIC 1512×850 | Apple `HDRGainMap:` → ISO 21496-1 mapping (maker-note headroom path); metadata-edited copies made at test time cover the SDR fallback and minimal `hdrgm:` XMP |
+| `exiftest.jpg` | pulsejet/memories `exiftest.jpg` (master) | Real JPEG 100×75 with EXIF + 1307-byte IFD1 thumbnail (no Orientation tag) | `drop_thumbnail`: rotate / orientation bake must drop the stale IFD1 thumbnail; an orientation-6 copy is made at test time |
 
 License note: fixtures remain the property of their upstreams — check
 the source repos (libvips/LGPL, libheif/MIT, libjxl/testdata terms,

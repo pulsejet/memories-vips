@@ -27,6 +27,7 @@ import json
 import os
 import shutil
 import socket
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -185,6 +186,91 @@ def check_magic(blob: bytes, ext: str):
         assert blob[:2] in (b"P6", b"P5"), f"bad ppm/pgm {blob[:8]!r}"
     else:
         assert len(blob) > 0, "empty output"
+
+
+# --- Minimal EXIF (TIFF) reader for IFD1 thumbnail checks (stdlib only). ---
+
+EXIF_FIXTURE = "exiftest.jpg"  # 100x75, IFD1 JPEG thumbnail (1307 bytes)
+TAG_MAKE, TAG_ORIENTATION, TAG_EXIF_IFD = 0x10F, 0x112, 0x8769
+TAG_DATETIME_ORIGINAL = 0x9003
+TAG_THUMB_OFFSET, TAG_THUMB_LENGTH = 0x201, 0x202
+
+
+def _parse_ifd(blob: bytes, t: int, off: int, e: str):
+    """Return ({tag: (type, count, value_field, entry_pos)}, next_ifd_off)."""
+    (n,) = struct.unpack_from(e + "H", blob, t + off)
+    tags = {}
+    for k in range(n):
+        pos = t + off + 2 + 12 * k
+        tag, typ, cnt = struct.unpack_from(e + "HHI", blob, pos)
+        tags[tag] = (typ, cnt, struct.unpack_from(e + "I", blob, pos + 8)[0], pos)
+    (nxt,) = struct.unpack_from(e + "I", blob, t + off + 2 + 12 * n)
+    return tags, nxt
+
+
+def exif_read(blob: bytes):
+    """Locate the EXIF TIFF block in any container (JPEG APP1, PNG eXIf,
+    WebP EXIF, AVIF Exif item) and parse it. Returns a dict with keys
+    t (TIFF start), e (endianness), ifd0, ifd1 (or None), exif (or None);
+    None when no TIFF block with an IFD0 Make tag is found."""
+    cands = []
+    for magic in (b"II*\x00", b"MM\x00*"):
+        i = blob.find(magic)
+        while i >= 0:
+            cands.append(i)
+            i = blob.find(magic, i + 1)
+    for t in sorted(cands):
+        e = "<" if blob[t : t + 2] == b"II" else ">"
+        try:
+            (off,) = struct.unpack_from(e + "I", blob, t + 4)
+            ifd0, nxt = _parse_ifd(blob, t, off, e)
+            if TAG_MAKE not in ifd0:
+                continue
+            ifd1 = _parse_ifd(blob, t, nxt, e)[0] if nxt else None
+            exif = None
+            if TAG_EXIF_IFD in ifd0:
+                exif = _parse_ifd(blob, t, ifd0[TAG_EXIF_IFD][2], e)[0]
+            return {"t": t, "e": e, "ifd0": ifd0, "ifd1": ifd1, "exif": exif}
+        except struct.error:
+            continue
+    return None
+
+
+def exif_ascii(blob: bytes, ex: dict, entry) -> str:
+    typ, cnt, val, pos = entry
+    raw = blob[pos + 8 : pos + 8 + cnt] if cnt <= 4 else blob[ex["t"] + val : ex["t"] + val + cnt]
+    return raw.rstrip(b"\x00").decode("ascii", "replace")
+
+
+def exif_short(blob: bytes, ex: dict, entry):
+    """Inline SHORT value of an IFD entry, or None for a missing entry."""
+    if entry is None:
+        return None
+    return struct.unpack_from(ex["e"] + "H", blob, entry[3] + 8)[0]
+
+
+def exif_has_thumbnail(blob: bytes) -> bool:
+    ex = exif_read(blob)
+    ifd1 = ex and ex["ifd1"]
+    return bool(ifd1) and TAG_THUMB_OFFSET in ifd1 and ifd1[TAG_THUMB_LENGTH][2] > 0
+
+
+def with_orientation6(blob: bytes) -> bytes:
+    """EXIF_FIXTURE with IFD0 Orientation=6 (== exiftool -Orientation#=6).
+    The fixture has no Orientation tag; to keep IFD0 the same size (no
+    offsets move) its inline YCbCrPositioning (0x213, last entry) is dropped
+    and Orientation is inserted in sorted tag order."""
+    ex = exif_read(blob)
+    e, ifd0 = ex["e"], ex["ifd0"]
+    assert TAG_ORIENTATION not in ifd0 and 0x213 in ifd0
+    entries = sorted(ifd0.items())
+    first = entries[0][1][3]
+    raw = [blob[pos : pos + 12] for tag, (_, _, _, pos) in entries if tag != 0x213]
+    raw.append(struct.pack(e + "HHIHH", TAG_ORIENTATION, 3, 1, 6, 0))
+    raw.sort(key=lambda r: struct.unpack_from(e + "H", r)[0])
+    out = bytearray(blob)
+    out[first : first + 12 * len(raw)] = b"".join(raw)
+    return bytes(out)
 
 
 class TestHelpAndArgv(unittest.TestCase):
@@ -956,6 +1042,64 @@ class TestStdoutStreaming(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(out, b"")
         assert_error_json(self, err, "")
+
+
+class TestExifThumbnail(unittest.TestCase):
+    """transform.h drop_thumbnail: the EXIF IFD1 thumbnail is a pre-rendered
+    copy of the source pixels, so it must not survive a rotate edit or an
+    upright() orientation bake (else it shows the old orientation). Other
+    EXIF must survive; untouched/unrotated converts keep the thumbnail."""
+
+    def convert(self, src: str, output: str, edits=None) -> tuple[dict, bytes]:
+        req = {"cmd": "convert", "input": src, "output": output, "stdout": True}
+        if edits is not None:
+            req["edits"] = edits
+        rc, blob, err = run_json(req)
+        self.assertEqual(rc, 0, err[:200])
+        check_magic(blob, os.path.splitext(output)[1])
+        return json.loads(err.strip().splitlines()[0]), blob
+
+    def test_fixture_has_thumbnail(self):
+        self.assertTrue(exif_has_thumbnail(read_bytes(data_path(EXIF_FIXTURE))))
+
+    def test_rotate_drops_thumbnail_all_formats(self):
+        src_blob = read_bytes(data_path(EXIF_FIXTURE))
+        src = exif_read(src_blob)
+        make = exif_ascii(src_blob, src, src["ifd0"][TAG_MAKE])
+        dto = exif_ascii(src_blob, src, src["exif"][TAG_DATETIME_ORIGINAL])
+        for out in ("output.jpg", "output.png", "output.webp", "output.avif"):
+            with self.subTest(output=out):
+                obj, blob = self.convert(
+                    data_path(EXIF_FIXTURE), out, [{"edit": "rotate", "angle": 90}]
+                )
+                self.assertEqual((obj["width"], obj["height"]), (75, 100))
+                ex = exif_read(blob)
+                self.assertIsNotNone(ex, "EXIF must be preserved")
+                self.assertFalse(exif_has_thumbnail(blob), "stale IFD1 thumbnail kept")
+                self.assertEqual(exif_ascii(blob, ex, ex["ifd0"][TAG_MAKE]), make)
+                self.assertIsNotNone(ex["exif"], "Exif sub-IFD lost")
+                self.assertEqual(
+                    exif_ascii(blob, ex, ex["exif"][TAG_DATETIME_ORIGINAL]), dto
+                )
+
+    def test_orientation_bake_drops_thumbnail(self):
+        with tempfile.TemporaryDirectory() as td:
+            o6 = os.path.join(td, "o6.jpg")
+            with open(o6, "wb") as f:
+                f.write(with_orientation6(read_bytes(data_path(EXIF_FIXTURE))))
+            obj, blob = self.convert(o6, "output.jpg", [{"edit": "exposure", "stops": 0.1}])
+            self.assertEqual((obj["width"], obj["height"]), (75, 100))
+            ex = exif_read(blob)
+            self.assertIsNotNone(ex, "EXIF must be preserved")
+            self.assertIn(exif_short(blob, ex, ex["ifd0"].get(TAG_ORIENTATION)), (None, 1))
+            self.assertFalse(exif_has_thumbnail(blob), "stale IFD1 thumbnail kept")
+
+    def test_thumbnail_kept_without_rotation(self):
+        for edits in ([{"edit": "exposure", "stops": 0.1}], None):
+            with self.subTest(edits=edits):
+                obj, blob = self.convert(data_path(EXIF_FIXTURE), "output.jpg", edits)
+                self.assertEqual((obj["width"], obj["height"]), (100, 75))
+                self.assertTrue(exif_has_thumbnail(blob), "thumbnail must be kept")
 
 
 if __name__ == "__main__":
